@@ -1,7 +1,8 @@
--- [ Ar Zero ] Teleport to Base UI — Steal a Brainrot
+-- [ Ar Zero ] Teleport UI — Steal a Brainrot
 -- Compatible: KRNL / Synapse X / Fluxus
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -13,12 +14,38 @@ if PlayerGui:FindFirstChild("ArZeroUI") then
 end
 
 -- ══════════════════════════════════════
+--         SAVED POSITIONS
+-- ══════════════════════════════════════
+local savedBasePosition = nil
+local spawnPosition = nil
+
+-- Rekam posisi spawn awal
+local function recordSpawn()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    if root then
+        task.wait(1)
+        spawnPosition = root.CFrame
+    end
+end
+task.spawn(recordSpawn)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    if root then
+        task.wait(1)
+        spawnPosition = root.CFrame
+    end
+end)
+
+-- ══════════════════════════════════════
 --         SCREEN GUI
 -- ══════════════════════════════════════
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ArZeroUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
 -- ══════════════════════════════════════
@@ -26,159 +53,147 @@ ScreenGui.Parent = PlayerGui
 -- ══════════════════════════════════════
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Size = UDim2.new(0, 110, 0, 35)
+ToggleBtn.Size = UDim2.new(0, 120, 0, 36)
 ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 30)
 ToggleBtn.TextColor3 = Color3.fromRGB(180, 220, 255)
-ToggleBtn.Text = "[ Ar Zero ] ☰"
+ToggleBtn.Text = "⚡ Ar Zero  ☰"
 ToggleBtn.Font = Enum.Font.GothamBold
 ToggleBtn.TextSize = 13
 ToggleBtn.BorderSizePixel = 0
+ToggleBtn.ZIndex = 10
 ToggleBtn.Parent = ScreenGui
 
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 8)
-toggleCorner.Parent = ToggleBtn
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 8)
+local tStroke = Instance.new("UIStroke", ToggleBtn)
+tStroke.Color = Color3.fromRGB(60, 100, 200)
+tStroke.Thickness = 1.2
 
 -- ══════════════════════════════════════
 --         MAIN FRAME
 -- ══════════════════════════════════════
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 280, 0, 320)
+MainFrame.Size = UDim2.new(0, 270, 0, 260)
 MainFrame.Position = UDim2.new(0, 10, 0, 55)
-MainFrame.BackgroundColor3 = Color3.fromRGB(13, 13, 22)
+MainFrame.BackgroundColor3 = Color3.fromRGB(11, 11, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
+MainFrame.ZIndex = 5
 MainFrame.Parent = ScreenGui
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
-mainCorner.Parent = MainFrame
-
--- STROKE BORDER
-local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = Color3.fromRGB(60, 100, 200)
-mainStroke.Thickness = 1.5
-mainStroke.Parent = MainFrame
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
+local mStroke = Instance.new("UIStroke", MainFrame)
+mStroke.Color = Color3.fromRGB(55, 95, 210)
+mStroke.Thickness = 1.5
 
 -- ══════════════════════════════════════
---         HEADER BAR
+--         HEADER
 -- ══════════════════════════════════════
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 45)
-Header.BackgroundColor3 = Color3.fromRGB(20, 20, 50)
+Header.Size = UDim2.new(1, 0, 0, 46)
+Header.BackgroundColor3 = Color3.fromRGB(18, 18, 48)
 Header.BorderSizePixel = 0
+Header.ZIndex = 6
 Header.Parent = MainFrame
-
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 12)
-headerCorner.Parent = Header
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 14)
 
 local HeaderLabel = Instance.new("TextLabel")
 HeaderLabel.Size = UDim2.new(1, -50, 1, 0)
-HeaderLabel.Position = UDim2.new(0, 15, 0, 0)
+HeaderLabel.Position = UDim2.new(0, 14, 0, 0)
 HeaderLabel.BackgroundTransparency = 1
 HeaderLabel.Text = "⚡ Ar Zero — Teleport"
 HeaderLabel.TextColor3 = Color3.fromRGB(180, 220, 255)
 HeaderLabel.Font = Enum.Font.GothamBold
 HeaderLabel.TextSize = 14
 HeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
+HeaderLabel.ZIndex = 7
 HeaderLabel.Parent = Header
 
--- CLOSE BUTTON
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -38, 0, 7)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 35, 35)
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 13
+CloseBtn.TextSize = 12
 CloseBtn.BorderSizePixel = 0
+CloseBtn.ZIndex = 8
 CloseBtn.Parent = Header
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = CloseBtn
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
 
 -- ══════════════════════════════════════
---         CONTENT AREA
+--         CONTENT
 -- ══════════════════════════════════════
 local Content = Instance.new("Frame")
 Content.Size = UDim2.new(1, 0, 1, -50)
 Content.Position = UDim2.new(0, 0, 0, 50)
 Content.BackgroundTransparency = 1
+Content.ZIndex = 6
 Content.Parent = MainFrame
 
 local Layout = Instance.new("UIListLayout")
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Padding = UDim.new(0, 8)
+Layout.Padding = UDim.new(0, 7)
 Layout.Parent = Content
 
-local Padding = Instance.new("UIPadding")
-Padding.PaddingLeft = UDim.new(0, 12)
-Padding.PaddingRight = UDim.new(0, 12)
-Padding.PaddingTop = UDim.new(0, 10)
-Padding.Parent = Content
+local Pad = Instance.new("UIPadding")
+Pad.PaddingLeft = UDim.new(0, 12)
+Pad.PaddingRight = UDim.new(0, 12)
+Pad.PaddingTop = UDim.new(0, 10)
+Pad.Parent = Content
 
 -- ══════════════════════════════════════
 --         BUTTON FACTORY
 -- ══════════════════════════════════════
-local function createButton(labelText, icon, order)
+local function createButton(text, icon, order, color)
     local Btn = Instance.new("TextButton")
     Btn.Size = UDim2.new(1, 0, 0, 42)
-    Btn.BackgroundColor3 = Color3.fromRGB(25, 30, 60)
-    Btn.Text = icon .. "  " .. labelText
+    Btn.BackgroundColor3 = color or Color3.fromRGB(22, 28, 58)
+    Btn.Text = icon .. "  " .. text
     Btn.TextColor3 = Color3.fromRGB(210, 230, 255)
     Btn.Font = Enum.Font.GothamSemibold
     Btn.TextSize = 13
     Btn.BorderSizePixel = 0
     Btn.TextXAlignment = Enum.TextXAlignment.Left
     Btn.LayoutOrder = order
+    Btn.ZIndex = 7
     Btn.Parent = Content
 
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 8)
-    btnCorner.Parent = Btn
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 9)
+    local s = Instance.new("UIStroke", Btn)
+    s.Color = Color3.fromRGB(50, 80, 180)
+    s.Thickness = 1
+    local p = Instance.new("UIPadding", Btn)
+    p.PaddingLeft = UDim.new(0, 12)
 
-    local btnStroke = Instance.new("UIStroke")
-    btnStroke.Color = Color3.fromRGB(50, 80, 180)
-    btnStroke.Thickness = 1
-    btnStroke.Parent = Btn
-
-    local btnPad = Instance.new("UIPadding")
-    btnPad.PaddingLeft = UDim.new(0, 12)
-    btnPad.Parent = Btn
-
-    -- Hover Effect
+    local base = color or Color3.fromRGB(22, 28, 58)
     Btn.MouseEnter:Connect(function()
         Btn.BackgroundColor3 = Color3.fromRGB(35, 45, 100)
     end)
     Btn.MouseLeave:Connect(function()
-        Btn.BackgroundColor3 = Color3.fromRGB(25, 30, 60)
+        Btn.BackgroundColor3 = base
     end)
 
     return Btn
 end
 
 -- ══════════════════════════════════════
---         STATUS LABEL
+--         STATUS
 -- ══════════════════════════════════════
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 28)
-StatusLabel.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
+StatusLabel.BackgroundColor3 = Color3.fromRGB(8, 8, 18)
 StatusLabel.Text = "Status : Standby"
 StatusLabel.TextColor3 = Color3.fromRGB(100, 200, 120)
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 12
 StatusLabel.BorderSizePixel = 0
 StatusLabel.LayoutOrder = 99
+StatusLabel.ZIndex = 7
 StatusLabel.Parent = Content
-
-local statusCorner = Instance.new("UICorner")
-statusCorner.CornerRadius = UDim.new(0, 6)
-statusCorner.Parent = StatusLabel
+Instance.new("UICorner", StatusLabel).CornerRadius = UDim.new(0, 6)
 
 local function setStatus(msg, color)
     StatusLabel.Text = "Status : " .. msg
@@ -186,177 +201,135 @@ local function setStatus(msg, color)
 end
 
 -- ══════════════════════════════════════
---         TELEPORT LOGIC
+--         BUTTONS
 -- ══════════════════════════════════════
+local BtnSaveBase  = createButton("Save Posisi Base", "💾", 1, Color3.fromRGB(25, 50, 25))
+local BtnBase      = createButton("Teleport to Base", "🏠", 2)
+local BtnSpawn     = createButton("Teleport to Spawn", "📍", 3)
 
--- Simpan posisi spawn awal saat script diload
-local spawnPosition = nil
-local function recordSpawn()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 5)
+-- ══════════════════════════════════════
+--         LOGIC
+-- ══════════════════════════════════════
+BtnSaveBase.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
     if root then
-        spawnPosition = root.CFrame
-    end
-end
-task.spawn(recordSpawn)
-
--- Update spawn position setiap kali respawn
-LocalPlayer.CharacterAdded:Connect(function(char)
-    local root = char:WaitForChild("HumanoidRootPart", 5)
-    if root then
-        task.wait(1) -- tunggu sebentar agar posisi sudah settle
-        spawnPosition = root.CFrame
+        savedBasePosition = root.CFrame
+        setStatus("Posisi base tersimpan!", Color3.fromRGB(100, 220, 100))
+        BtnSaveBase.BackgroundColor3 = Color3.fromRGB(20, 80, 20)
+    else
+        setStatus("Character tidak ada.", Color3.fromRGB(255, 80, 80))
     end
 end)
 
--- Cari base milik player di workspace
-local function getBase()
-    local userId = tostring(LocalPlayer.UserId)
-    local userName = LocalPlayer.Name:lower()
-
-    -- Prioritas 1: cari model/part yang mengandung nama player atau userId
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local name = obj.Name:lower()
-        if name:find(userName) or name:find(userId) then
-            if obj:IsA("Model") then
-                local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if pp then return pp end
-            elseif obj:IsA("BasePart") then
-                return obj
-            end
-        end
-    end
-
-    -- Prioritas 2: cari keyword pangkalan / santet di semua instance
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local name = obj.Name:lower()
-        if name:find("pangkalan") or name:find("santet") then
-            if obj:IsA("Model") then
-                local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if pp then return pp end
-            elseif obj:IsA("BasePart") then
-                return obj
-            end
-        end
-    end
-
-    return nil
-end
-
--- Teleport presisi ke dalam base (tengah objek + offset Y agar tidak jatuh)
-local function teleportToBase()
+BtnBase.MouseButton1Click:Connect(function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then
-        setStatus("Character tidak ditemukan.", Color3.fromRGB(255, 80, 80))
+        setStatus("Character tidak ada.", Color3.fromRGB(255, 80, 80))
         return
     end
-
-    local base = getBase()
-    if base then
-        -- Ambil posisi tengah base + naik sedikit agar tepat di atas lantai
-        local basePos = base.CFrame.Position
-        local sizeY = base.Size and base.Size.Y or 0
-        root.CFrame = CFrame.new(basePos.X, basePos.Y + (sizeY / 2) + 3, basePos.Z)
-        setStatus("Teleport ke base berhasil!", Color3.fromRGB(100, 200, 120))
+    if savedBasePosition then
+        root.CFrame = savedBasePosition
+        setStatus("Teleport ke base!", Color3.fromRGB(100, 200, 120))
     else
-        setStatus("Base tidak ditemukan.", Color3.fromRGB(255, 180, 50))
+        setStatus("Belum save posisi base.", Color3.fromRGB(255, 180, 50))
     end
-end
-
-local function teleportToCoord(x, y, z)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    root.CFrame = CFrame.new(x, y, z)
-    setStatus("Teleport ke koordinat.", Color3.fromRGB(100, 200, 120))
-end
-
--- ══════════════════════════════════════
---         BUTTONS
--- ══════════════════════════════════════
-local BtnBase   = createButton("Teleport to Base", "🏠", 1)
-local BtnSpawn  = createButton("Teleport to Spawn", "📍", 2)
-local BtnCenter = createButton("Teleport to Center Map", "🗺️", 3)
-local BtnCustom = createButton("Teleport to (0, 50, 0)", "🎯", 4)
-
-BtnBase.MouseButton1Click:Connect(function()
-    teleportToBase()
 end)
 
 BtnSpawn.MouseButton1Click:Connect(function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then
-        setStatus("Character tidak ditemukan.", Color3.fromRGB(255, 80, 80))
+        setStatus("Character tidak ada.", Color3.fromRGB(255, 80, 80))
         return
     end
     if spawnPosition then
         root.CFrame = spawnPosition
-        setStatus("Teleport ke Spawn awal.", Color3.fromRGB(100, 200, 120))
+        setStatus("Teleport ke spawn.", Color3.fromRGB(100, 200, 120))
     else
-        setStatus("Posisi spawn belum tercatat.", Color3.fromRGB(255, 180, 50))
+        setStatus("Posisi spawn belum ada.", Color3.fromRGB(255, 180, 50))
     end
 end)
 
-BtnCenter.MouseButton1Click:Connect(function()
-    teleportToCoord(0, 50, 0)
-end)
-
-BtnCustom.MouseButton1Click:Connect(function()
-    teleportToCoord(0, 50, 0)
-end)
-
 -- ══════════════════════════════════════
---         TOGGLE LOGIC
+--         TOGGLE
 -- ══════════════════════════════════════
 local isOpen = true
-
 local function setMenu(open)
     isOpen = open
     MainFrame.Visible = open
 end
 
-ToggleBtn.MouseButton1Click:Connect(function()
-    setMenu(not isOpen)
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    setMenu(false)
-end)
+ToggleBtn.MouseButton1Click:Connect(function() setMenu(not isOpen) end)
+CloseBtn.MouseButton1Click:Connect(function() setMenu(false) end)
 
 -- ══════════════════════════════════════
---         DRAGGABLE FRAME
+--         DRAGGABLE — MAIN FRAME
 -- ══════════════════════════════════════
-local dragging, dragInput, dragStart, startPos
+local dragging = false
+local dragStart, startPos
 
 Header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    if input.UserInputType == Enum.UserInputType.Touch or
+       input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
     end
 end)
 
-Header.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
+Header.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or
+       input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
     end
 end)
 
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement or
+        input.UserInputType == Enum.UserInputType.Touch
+    ) then
         local delta = input.Position - dragStart
         MainFrame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ══════════════════════════════════════
+--         DRAGGABLE — TOGGLE BUTTON
+-- ══════════════════════════════════════
+local tDragging = false
+local tDragStart, tStartPos
+
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or
+       input.UserInputType == Enum.UserInputType.MouseButton1 then
+        tDragging = true
+        tDragStart = input.Position
+        tStartPos = ToggleBtn.Position
+    end
+end)
+
+ToggleBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or
+       input.UserInputType == Enum.UserInputType.MouseButton1 then
+        tDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if tDragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement or
+        input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - tDragStart
+        ToggleBtn.Position = UDim2.new(
+            tStartPos.X.Scale, tStartPos.X.Offset + delta.X,
+            tStartPos.Y.Scale, tStartPos.Y.Offset + delta.Y
         )
     end
 end)
