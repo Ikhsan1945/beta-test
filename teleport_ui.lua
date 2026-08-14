@@ -381,46 +381,136 @@ end)
 -- ══════════════════════════════════════
 --         LOGIC — AUTO STEAL
 -- ══════════════════════════════════════
-local function findNearestItem()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
 
-    local nearest, minDist = nil, math.huge
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local name = obj.Name:lower()
-        if obj:IsA("BasePart") and (
-            name:find("brainrot") or name:find("item") or
-            name:find("collectible") or name:find("steal")
-        ) then
-            local dist = (obj.Position - root.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                nearest = obj
+-- Ekstrak angka dari string (untuk baca value/rate di nama objek atau BillboardGui)
+local function extractValue(obj)
+    local score = 0
+
+    -- Cek BillboardGui / TextLabel di dalam objek untuk angka rate/value
+    for _, desc in ipairs(obj:GetDescendants()) do
+        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+            local txt = desc.Text or ""
+            -- Cari pola angka (termasuk K, M, B, Qa, dst)
+            local num = txt:match("([%d%.]+)%s*[KkMmBbQq]?a?")
+            if num then
+                local val = tonumber(num) or 0
+                -- Konversi suffix
+                if txt:find("[Kk]") then val = val * 1e3
+                elseif txt:find("[Mm]") then val = val * 1e6
+                elseif txt:find("[Bb]") then val = val * 1e9
+                elseif txt:find("[Qq]a") or txt:find("Qa") then val = val * 1e15
+                elseif txt:find("[Tt]") then val = val * 1e12
+                end
+                if val > score then score = val end
             end
         end
     end
-    return nearest
+
+    -- Fallback: cek nama objek mengandung angka
+    if score == 0 then
+        local num = obj.Name:match("([%d%.]+)")
+        score = tonumber(num) or 0
+    end
+
+    return score
+end
+
+-- Cari brainrot dengan value/rate tertinggi di seluruh workspace
+local function findHighestValueBrainrot()
+    local best, bestScore = nil, -1
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        -- Skip milik player sendiri
+        if obj:IsA("Model") or obj:IsA("BasePart") then
+            local name = obj.Name:lower()
+            local isOwned = false
+            -- Skip jika ada nama player sendiri di parent chain
+            local p = obj
+            for _ = 1, 5 do
+                p = p.Parent
+                if not p then break end
+                if p.Name == LocalPlayer.Name then isOwned = true; break end
+            end
+
+            if not isOwned and (
+                name:find("brainrot") or
+                name:find("creature") or
+                name:find("pet") or
+                name:find("unit")
+            ) then
+                local val = extractValue(obj)
+                if val > bestScore then
+                    bestScore = val
+                    best = obj
+                end
+            end
+        end
+    end
+
+    return best, bestScore
+end
+
+-- Loop utama auto steal
+local function runAutoSteal()
+    while autoStealEnabled do
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+
+        if root then
+            -- Step 1: cari target tertinggi
+            local target, score = findHighestValueBrainrot()
+
+            if target then
+                local targetPart = nil
+                if target:IsA("BasePart") then
+                    targetPart = target
+                elseif target:IsA("Model") then
+                    targetPart = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+                end
+
+                if targetPart then
+                    -- Step 2: teleport ke target
+                    setStatus("Stealing — Value: " .. tostring(math.floor(score)), Color3.fromRGB(255, 200, 50))
+                    root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 3, 0))
+                    task.wait(0.6) -- tunggu pickup
+
+                    -- Step 3: teleport balik ke base
+                    if savedBasePosition then
+                        root.CFrame = savedBasePosition
+                        setStatus("Kembali ke base!", Color3.fromRGB(100, 220, 100))
+                        task.wait(0.8)
+                    else
+                        setStatus("Base belum di-save!", Color3.fromRGB(255, 180, 50))
+                        task.wait(1)
+                    end
+                else
+                    task.wait(0.5)
+                end
+            else
+                setStatus("Tidak ada brainrot terdeteksi.", Color3.fromRGB(180, 180, 100))
+                task.wait(2)
+            end
+        else
+            task.wait(1)
+        end
+    end
 end
 
 BtnAutoSteal.MouseButton1Click:Connect(function()
     autoStealEnabled = not autoStealEnabled
     setAutoSteal(autoStealEnabled)
-    setStatus(autoStealEnabled and "Auto Steal ON" or "Auto Steal OFF",
-        autoStealEnabled and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
 
     if autoStealEnabled then
-        autoStealConn = RunService.Heartbeat:Connect(function()
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not root then return end
-            local item = findNearestItem()
-            if item then
-                root.CFrame = CFrame.new(item.Position + Vector3.new(0, 2, 0))
-            end
-        end)
+        if not savedBasePosition then
+            setStatus("Save base dulu sebelum Auto Steal!", Color3.fromRGB(255, 80, 80))
+            autoStealEnabled = false
+            setAutoSteal(false)
+            return
+        end
+        setStatus("Auto Steal ON — Scanning...", Color3.fromRGB(100, 220, 100))
+        task.spawn(runAutoSteal)
     else
-        if autoStealConn then autoStealConn:Disconnect(); autoStealConn = nil end
+        setStatus("Auto Steal OFF", Color3.fromRGB(200, 100, 100))
     end
 end)
 
