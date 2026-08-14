@@ -188,35 +188,62 @@ end
 -- ══════════════════════════════════════
 --         TELEPORT LOGIC
 -- ══════════════════════════════════════
+
+-- Simpan posisi spawn awal saat script diload
+local spawnPosition = nil
+local function recordSpawn()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    if root then
+        spawnPosition = root.CFrame
+    end
+end
+task.spawn(recordSpawn)
+
+-- Update spawn position setiap kali respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    if root then
+        task.wait(1) -- tunggu sebentar agar posisi sudah settle
+        spawnPosition = root.CFrame
+    end
+end)
+
+-- Cari base milik player di workspace
 local function getBase()
-    -- Cari semua instance (Model, Part, dll) dengan nama pangkalan / santet
+    local userId = tostring(LocalPlayer.UserId)
+    local userName = LocalPlayer.Name:lower()
+
+    -- Prioritas 1: cari model/part yang mengandung nama player atau userId
     for _, obj in ipairs(workspace:GetDescendants()) do
         local name = obj.Name:lower()
-        if name:find("pangkalan") or name:find("santet") then
-            -- Jika Model, ambil PrimaryPart atau Part pertama
+        if name:find(userName) or name:find(userId) then
             if obj:IsA("Model") then
-                if obj.PrimaryPart then
-                    return obj.PrimaryPart
-                else
-                    local part = obj:FindFirstChildWhichIsA("BasePart")
-                    if part then return part end
-                end
+                local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if pp then return pp end
             elseif obj:IsA("BasePart") then
                 return obj
             end
         end
     end
 
-    -- Fallback: cari SpawnLocation milik player
+    -- Prioritas 2: cari keyword pangkalan / santet di semua instance
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("SpawnLocation") then
-            return obj
+        local name = obj.Name:lower()
+        if name:find("pangkalan") or name:find("santet") then
+            if obj:IsA("Model") then
+                local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if pp then return pp end
+            elseif obj:IsA("BasePart") then
+                return obj
+            end
         end
     end
 
     return nil
 end
 
+-- Teleport presisi ke dalam base (tengah objek + offset Y agar tidak jatuh)
 local function teleportToBase()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -227,8 +254,11 @@ local function teleportToBase()
 
     local base = getBase()
     if base then
-        root.CFrame = base.CFrame + Vector3.new(0, 5, 0)
-        setStatus("Teleport berhasil!", Color3.fromRGB(100, 200, 120))
+        -- Ambil posisi tengah base + naik sedikit agar tepat di atas lantai
+        local basePos = base.CFrame.Position
+        local sizeY = base.Size and base.Size.Y or 0
+        root.CFrame = CFrame.new(basePos.X, basePos.Y + (sizeY / 2) + 3, basePos.Z)
+        setStatus("Teleport ke base berhasil!", Color3.fromRGB(100, 200, 120))
     else
         setStatus("Base tidak ditemukan.", Color3.fromRGB(255, 180, 50))
     end
@@ -255,16 +285,17 @@ BtnBase.MouseButton1Click:Connect(function()
 end)
 
 BtnSpawn.MouseButton1Click:Connect(function()
-    local spawnLoc = workspace:FindFirstChild("SpawnLocation")
-    if spawnLoc then
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.CFrame = spawnLoc.CFrame + Vector3.new(0, 5, 0)
-            setStatus("Teleport ke Spawn.", Color3.fromRGB(100, 200, 120))
-        end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        setStatus("Character tidak ditemukan.", Color3.fromRGB(255, 80, 80))
+        return
+    end
+    if spawnPosition then
+        root.CFrame = spawnPosition
+        setStatus("Teleport ke Spawn awal.", Color3.fromRGB(100, 200, 120))
     else
-        setStatus("SpawnLocation tidak ada.", Color3.fromRGB(255, 80, 80))
+        setStatus("Posisi spawn belum tercatat.", Color3.fromRGB(255, 180, 50))
     end
 end)
 
