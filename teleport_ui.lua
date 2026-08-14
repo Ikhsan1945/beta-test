@@ -189,13 +189,11 @@ end
 --         TELEPORT LOGIC
 -- ══════════════════════════════════════
 local function getBase()
-    -- Cari objek base / spawn milik player
     for _, obj in ipairs(workspace:GetDescendants()) do
         local name = obj.Name:lower()
         if obj:IsA("BasePart") and (
-            name:find("base") or
-            name:find("spawn") or
-            name:find("home")
+            name:find("pangkalan") or
+            name:find("santet")
         ) then
             return obj
         end
@@ -231,10 +229,10 @@ end
 -- ══════════════════════════════════════
 --         BUTTONS
 -- ══════════════════════════════════════
-local BtnBase    = createButton("Teleport to Base", "🏠", 1)
-local BtnSpawn   = createButton("Teleport to Spawn", "📍", 2)
-local BtnCenter  = createButton("Teleport to Center Map", "🗺️", 3)
-local BtnCustom  = createButton("Teleport to (0, 50, 0)", "🎯", 4)
+local BtnBase   = createButton("Teleport to Base", "🏠", 1)
+local BtnSpawn  = createButton("Teleport to Spawn", "📍", 2)
+local BtnCenter = createButton("Teleport to Center Map", "🗺️", 3)
+local BtnCustom = createButton("Teleport to (0, 50, 0)", "🎯", 4)
 
 BtnBase.MouseButton1Click:Connect(function()
     teleportToBase()
