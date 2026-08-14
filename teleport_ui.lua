@@ -22,10 +22,14 @@ local spawnPosition     = nil
 local noclipEnabled     = false
 local speedEnabled      = false
 local antiAfkEnabled    = false
+local antiHitEnabled    = false
+local fpsBoosted        = false
+local antiRagdoll       = false
 local autoStealEnabled  = false
 local noclipConn        = nil
 local autoStealConn     = nil
 local antiAfkConn       = nil
+local antiHitConn       = nil
 
 -- Rekam spawn awal
 local function recordSpawn()
@@ -277,7 +281,10 @@ local BtnAutoSteal, setAutoSteal = createToggleBtn("Auto Steal", "🤖", 21)
 
 -- [ UTILITY ]
 makeSection(ScrollFrame, "── UTILITY ──", 30)
-local BtnAntiAfk, setAntiAfk = createToggleBtn("Anti AFK", "🛡️", 31)
+local BtnAntiAfk,    setAntiAfk    = createToggleBtn("Anti AFK",       "🛡️", 31)
+local BtnAntiHit,    setAntiHit    = createToggleBtn("Anti Hit",       "🔰", 32)
+local BtnFPS,        setFPS        = createToggleBtn("FPS Booster",    "🚀", 33)
+local BtnAntiRag,    setAntiRag    = createToggleBtn("Anti Ragdoll",   "🦾", 34)
 
 -- ══════════════════════════════════════
 --         LOGIC — TELEPORT
@@ -354,28 +361,59 @@ end)
 -- ══════════════════════════════════════
 --         LOGIC — SPEED HACK
 -- ══════════════════════════════════════
-local SPEED_ON  = 120
-local SPEED_OFF = 16
+local SPEED_ON   = 120
+local normalSpeed = 16 -- akan diupdate saat karakter load
+local speedConn   = nil
 
-local function applySpeed(on)
-    local char = LocalPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = on and SPEED_ON or SPEED_OFF end
+-- Rekam speed normal game sebelum diubah
+local function recordNormalSpeed()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum and not speedEnabled then
+        normalSpeed = hum.WalkSpeed
     end
 end
+task.spawn(recordNormalSpeed)
 
 BtnSpeed.MouseButton1Click:Connect(function()
     speedEnabled = not speedEnabled
     setSpeed(speedEnabled)
-    applySpeed(speedEnabled)
     setStatus(speedEnabled and "Speed Hack ON" or "Speed Hack OFF",
         speedEnabled and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
+
+    if speedEnabled then
+        -- Loop paksa WalkSpeed setiap Heartbeat agar tidak reset saat lompat/hit
+        speedConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.WalkSpeed ~= SPEED_ON then
+                hum.WalkSpeed = SPEED_ON
+            end
+        end)
+    else
+        -- Matikan loop
+        if speedConn then speedConn:Disconnect(); speedConn = nil end
+        -- Restore ke speed normal yang direkam
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = normalSpeed end
+        end
+    end
 end)
 
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if speedEnabled then applySpeed(true) end
+-- Saat respawn: rekam ulang speed normal, reapply jika speed masih on
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum then
+        task.wait(0.5)
+        if not speedEnabled then
+            normalSpeed = hum.WalkSpeed -- rekam speed asli game
+        else
+            hum.WalkSpeed = SPEED_ON
+        end
+    end
 end)
 
 -- ══════════════════════════════════════
@@ -567,8 +605,220 @@ BtnAntiAfk.MouseButton1Click:Connect(function()
 end)
 
 -- ══════════════════════════════════════
---         TOGGLE MENU
+--         LOGIC — ANTI HIT
 -- ══════════════════════════════════════
+local function applyAntiHit(char)
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    -- Pasang ForceField agar tidak bisa di-damage
+    local ff = char:FindFirstChildOfClass("ForceField")
+    if not ff then
+        ff = Instance.new("ForceField")
+        ff.Visible = false
+        ff.Parent = char
+    end
+
+    -- Jaga health tetap penuh setiap frame
+    hum.MaxHealth = math.huge
+    hum.Health = math.huge
+end
+
+local function removeAntiHit(char)
+    if not char then return end
+    local ff = char:FindFirstChildOfClass("ForceField")
+    if ff then ff:Destroy() end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.MaxHealth = 100
+        hum.Health = 100
+    end
+end
+
+BtnAntiHit.MouseButton1Click:Connect(function()
+    antiHitEnabled = not antiHitEnabled
+    setAntiHit(antiHitEnabled)
+    setStatus(antiHitEnabled and "Anti Hit ON" or "Anti Hit OFF",
+        antiHitEnabled and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
+
+    if antiHitEnabled then
+        -- Apply ke karakter sekarang
+        applyAntiHit(LocalPlayer.Character)
+
+        -- Loop jaga health + reapply jika health turun
+        antiHitConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.MaxHealth = math.huge
+                if hum.Health < hum.MaxHealth then
+                    hum.Health = math.huge
+                end
+            end
+            -- Pastikan ForceField tetap ada
+            if not char:FindFirstChildOfClass("ForceField") then
+                local ff = Instance.new("ForceField")
+                ff.Visible = false
+                ff.Parent = char
+            end
+        end)
+
+        -- Reapply setelah respawn
+        LocalPlayer.CharacterAdded:Connect(function(char)
+            if antiHitEnabled then
+                task.wait(0.5)
+                applyAntiHit(char)
+            end
+        end)
+    else
+        if antiHitConn then antiHitConn:Disconnect(); antiHitConn = nil end
+        removeAntiHit(LocalPlayer.Character)
+    end
+end)
+
+-- ══════════════════════════════════════
+--         LOGIC — FPS BOOSTER
+-- ══════════════════════════════════════
+local Lighting  = game:GetService("Lighting")
+local gSettings = settings()
+
+local origValues = {
+    GlobalShadows = Lighting.GlobalShadows,
+    FogEnd        = Lighting.FogEnd,
+    Brightness    = Lighting.Brightness,
+    QualityLevel  = gSettings.Rendering.QualityLevel,
+}
+
+local function applyFPSBoost()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd        = 9e9
+    Lighting.Brightness    = 0
+    gSettings.Rendering.QualityLevel = Enum.QualityLevel.Level01
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or
+           obj:IsA("Beam") or obj:IsA("Smoke") or
+           obj:IsA("Fire") or obj:IsA("Sparkles") then
+            obj.Enabled = false
+        end
+        if obj:IsA("Texture") or obj:IsA("Decal") then
+            obj.Transparency = 1
+        end
+    end
+end
+
+local function removeFPSBoost()
+    Lighting.GlobalShadows = origValues.GlobalShadows
+    Lighting.FogEnd        = origValues.FogEnd
+    Lighting.Brightness    = origValues.Brightness
+    gSettings.Rendering.QualityLevel = origValues.QualityLevel
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or
+           obj:IsA("Beam") or obj:IsA("Smoke") or
+           obj:IsA("Fire") or obj:IsA("Sparkles") then
+            obj.Enabled = true
+        end
+        if obj:IsA("Texture") or obj:IsA("Decal") then
+            obj.Transparency = 0
+        end
+    end
+end
+
+BtnFPS.MouseButton1Click:Connect(function()
+    fpsBoosted = not fpsBoosted
+    setFPS(fpsBoosted)
+    if fpsBoosted then
+        applyFPSBoost()
+        setStatus("FPS Booster ON!", Color3.fromRGB(100, 220, 100))
+    else
+        removeFPSBoost()
+        setStatus("FPS Booster OFF.", Color3.fromRGB(200, 100, 100))
+    end
+end)
+
+-- ══════════════════════════════════════
+--         LOGIC — ANTI RAGDOLL
+-- ══════════════════════════════════════
+local antiRagConn = nil
+
+local function applyAntiRagdoll(char)
+    if not char then return end
+    -- Hapus semua BallSocketConstraint & Bone yang menyebabkan ragdoll
+    for _, obj in ipairs(char:GetDescendants()) do
+        if obj:IsA("BallSocketConstraint") or
+           obj:IsA("HingeConstraint") or
+           obj:IsA("UniversalConstraint") or
+           obj:IsA("RopeConstraint") or
+           obj:IsA("NoCollisionConstraint") then
+            obj.Enabled = false
+        end
+    end
+
+    -- Pastikan semua part karakter tidak CanCollide off satu sama lain
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+BtnAntiRag.MouseButton1Click:Connect(function()
+    antiRagdoll = not antiRagdoll
+    setAntiRag(antiRagdoll)
+    setStatus(antiRagdoll and "Anti Ragdoll ON" or "Anti Ragdoll OFF",
+        antiRagdoll and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
+
+    if antiRagdoll then
+        -- Apply sekarang
+        applyAntiRagdoll(LocalPlayer.Character)
+
+        -- Loop cegah state ragdoll
+        antiRagConn = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                local state = hum:GetState()
+                if state == Enum.HumanoidStateType.Ragdoll or
+                   state == Enum.HumanoidStateType.FallingDown then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                end
+            end
+        end)
+
+        -- Reapply setelah respawn
+        LocalPlayer.CharacterAdded:Connect(function(char)
+            if antiRagdoll then
+                task.wait(0.3)
+                applyAntiRagdoll(char)
+            end
+        end)
+    else
+        if antiRagConn then antiRagConn:Disconnect(); antiRagConn = nil end
+        -- Restore constraints
+        local char = LocalPlayer.Character
+        if char then
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj:IsA("BallSocketConstraint") or
+                   obj:IsA("HingeConstraint") or
+                   obj:IsA("UniversalConstraint") then
+                    obj.Enabled = true
+                end
+            end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            end
+        end
+    end
+end)
+
 local isOpen = true
 local function setMenu(open)
     isOpen = open
