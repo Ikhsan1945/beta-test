@@ -189,15 +189,31 @@ end
 --         TELEPORT LOGIC
 -- ══════════════════════════════════════
 local function getBase()
+    -- Cari semua instance (Model, Part, dll) dengan nama pangkalan / santet
     for _, obj in ipairs(workspace:GetDescendants()) do
         local name = obj.Name:lower()
-        if obj:IsA("BasePart") and (
-            name:find("pangkalan") or
-            name:find("santet")
-        ) then
+        if name:find("pangkalan") or name:find("santet") then
+            -- Jika Model, ambil PrimaryPart atau Part pertama
+            if obj:IsA("Model") then
+                if obj.PrimaryPart then
+                    return obj.PrimaryPart
+                else
+                    local part = obj:FindFirstChildWhichIsA("BasePart")
+                    if part then return part end
+                end
+            elseif obj:IsA("BasePart") then
+                return obj
+            end
+        end
+    end
+
+    -- Fallback: cari SpawnLocation milik player
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("SpawnLocation") then
             return obj
         end
     end
+
     return nil
 end
 
