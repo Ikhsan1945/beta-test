@@ -382,112 +382,139 @@ end)
 --         LOGIC — AUTO STEAL
 -- ══════════════════════════════════════
 
--- Ekstrak angka dari string (untuk baca value/rate di nama objek atau BillboardGui)
-local function extractValue(obj)
-    local score = 0
-
-    -- Cek BillboardGui / TextLabel di dalam objek untuk angka rate/value
-    for _, desc in ipairs(obj:GetDescendants()) do
-        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-            local txt = desc.Text or ""
-            -- Cari pola angka (termasuk K, M, B, Qa, dst)
-            local num = txt:match("([%d%.]+)%s*[KkMmBbQq]?a?")
-            if num then
-                local val = tonumber(num) or 0
-                -- Konversi suffix
-                if txt:find("[Kk]") then val = val * 1e3
-                elseif txt:find("[Mm]") then val = val * 1e6
-                elseif txt:find("[Bb]") then val = val * 1e9
-                elseif txt:find("[Qq]a") or txt:find("Qa") then val = val * 1e15
-                elseif txt:find("[Tt]") then val = val * 1e12
-                end
-                if val > score then score = val end
-            end
+-- Konversi teks nilai ke angka (support $, /s, K, M, B, T, Qa)
+local function parseValue(txt)
+    if not txt or txt == "" then return 0 end
+    -- Ambil bagian rate ($/s) duluan jika ada, karena lebih relevan
+    local rateStr = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?%s*/s")
+    local flatStr = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?")
+    
+    local function convert(num, suffix)
+        local v = tonumber(num) or 0
+        suffix = suffix and suffix:upper() or ""
+        if suffix == "K" then return v * 1e3
+        elseif suffix == "M" then return v * 1e6
+        elseif suffix == "B" then return v * 1e9
+        elseif suffix == "T" then return v * 1e12
+        elseif suffix == "Q" then return v * 1e15
         end
+        return v
     end
 
-    -- Fallback: cek nama objek mengandung angka
-    if score == 0 then
-        local num = obj.Name:match("([%d%.]+)")
-        score = tonumber(num) or 0
+    if rateStr then
+        local num, suf = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?%s*/s")
+        return convert(num, suf) * 1e6 -- rate diberi bobot lebih tinggi
+    elseif flatStr then
+        local num, suf = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?")
+        return convert(num, suf)
     end
-
-    return score
+    return 0
 end
 
--- Cari brainrot dengan value/rate tertinggi di seluruh workspace
-local function findHighestValueBrainrot()
-    local best, bestScore = nil, -1
+-- Cari semua BillboardGui di workspace yang punya tombol "Kumpulkan"
+-- Lalu ambil yang value/rate-nya tertinggi
+local function findBestKumpulkan()
+    local bestBtn  = nil
+    local bestPart = nil
+    local bestVal  = -1
 
     for _, obj in ipairs(workspace:GetDescendants()) do
-        -- Skip milik player sendiri
-        if obj:IsA("Model") or obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            local isOwned = false
-            -- Skip jika ada nama player sendiri di parent chain
+        if obj:IsA("BillboardGui") then
+            -- Pastikan bukan milik player sendiri
+            local isOwn = false
             local p = obj
-            for _ = 1, 5 do
+            for _ = 1, 8 do
                 p = p.Parent
                 if not p then break end
-                if p.Name == LocalPlayer.Name then isOwned = true; break end
+                if p.Name == LocalPlayer.Name then isOwn = true; break end
             end
+            if isOwn then continue end
 
-            if not isOwned and (
-                name:find("brainrot") or
-                name:find("creature") or
-                name:find("pet") or
-                name:find("unit")
-            ) then
-                local val = extractValue(obj)
-                if val > bestScore then
-                    bestScore = val
-                    best = obj
+            -- Cari TextButton "Kumpulkan" di dalam BillboardGui ini
+            for _, child in ipairs(obj:GetDescendants()) do
+                if (child:IsA("TextButton") or child:IsA("TextLabel")) then
+                    local txt = child.Text or ""
+                    if txt:lower():find("kumpulkan") then
+                        -- Baca semua TextLabel di BillboardGui ini untuk cari nilai
+                        local totalVal = 0
+                        for _, sibling in ipairs(obj:GetDescendants()) do
+                            if sibling:IsA("TextLabel") or sibling:IsA("TextButton") then
+                                local v = parseValue(sibling.Text or "")
+                                if v > totalVal then totalVal = v end
+                            end
+                        end
+
+                        -- Ambil part yang jadi adornee BillboardGui
+                        local adornee = obj.Adornee
+                        if not adornee and obj.Parent and obj.Parent:IsA("BasePart") then
+                            adornee = obj.Parent
+                        end
+                        if not adornee and obj.Parent then
+                            adornee = obj.Parent:FindFirstChildWhichIsA("BasePart")
+                        end
+
+                        if adornee and totalVal > bestVal then
+                            bestVal  = totalVal
+                            bestBtn  = child
+                            bestPart = adornee
+                        end
+                        break
+                    end
                 end
             end
         end
     end
 
-    return best, bestScore
+    return bestBtn, bestPart, bestVal
 end
 
--- Loop utama auto steal
+-- Format angka besar jadi teks singkat
+local function fmtVal(v)
+    if v >= 1e15 then return string.format("%.1fQa", v/1e15)
+    elseif v >= 1e12 then return string.format("%.1fT", v/1e12)
+    elseif v >= 1e9  then return string.format("%.1fB", v/1e9)
+    elseif v >= 1e6  then return string.format("%.1fM", v/1e6)
+    elseif v >= 1e3  then return string.format("%.1fK", v/1e3)
+    else return tostring(math.floor(v)) end
+end
+
+-- Loop utama Auto Steal
 local function runAutoSteal()
     while autoStealEnabled do
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
 
         if root then
-            -- Step 1: cari target tertinggi
-            local target, score = findHighestValueBrainrot()
+            -- Step 1: scan semua Kumpulkan, ambil tertinggi
+            local btn, part, val = findBestKumpulkan()
 
-            if target then
-                local targetPart = nil
-                if target:IsA("BasePart") then
-                    targetPart = target
-                elseif target:IsA("Model") then
-                    targetPart = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+            if btn and part then
+                -- Step 2: teleport ke posisi brainrot
+                setStatus("Target: $" .. fmtVal(val) .. " — Menuju...", Color3.fromRGB(255, 210, 60))
+                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
+                task.wait(0.4)
+
+                -- Step 3: fire tombol Kumpulkan (jika TextButton)
+                if btn:IsA("TextButton") then
+                    local old = btn.Parent and btn.Parent.Parent
+                    -- Simulasi klik
+                    btn.MouseButton1Click:Fire()
+                    -- Fallback: pindah ke atas part, game biasanya pakai ProximityPrompt / Touch
+                    root.CFrame = CFrame.new(part.Position + Vector3.new(0, 1, 0))
+                    task.wait(0.3)
                 end
 
-                if targetPart then
-                    -- Step 2: teleport ke target
-                    setStatus("Stealing — Value: " .. tostring(math.floor(score)), Color3.fromRGB(255, 200, 50))
-                    root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 3, 0))
-                    task.wait(0.6) -- tunggu pickup
-
-                    -- Step 3: teleport balik ke base
-                    if savedBasePosition then
-                        root.CFrame = savedBasePosition
-                        setStatus("Kembali ke base!", Color3.fromRGB(100, 220, 100))
-                        task.wait(0.8)
-                    else
-                        setStatus("Base belum di-save!", Color3.fromRGB(255, 180, 50))
-                        task.wait(1)
-                    end
+                -- Step 4: balik ke base
+                if savedBasePosition then
+                    root.CFrame = savedBasePosition
+                    setStatus("Stolen $" .. fmtVal(val) .. " — Di base!", Color3.fromRGB(80, 220, 100))
+                    task.wait(0.6)
                 else
-                    task.wait(0.5)
+                    setStatus("Base belum di-save!", Color3.fromRGB(255, 180, 50))
+                    task.wait(1)
                 end
             else
-                setStatus("Tidak ada brainrot terdeteksi.", Color3.fromRGB(180, 180, 100))
+                setStatus("Scanning... tidak ada target.", Color3.fromRGB(160, 160, 80))
                 task.wait(2)
             end
         else
