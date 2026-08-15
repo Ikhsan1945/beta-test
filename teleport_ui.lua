@@ -96,33 +96,99 @@ HeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
 HeaderLabel.ZIndex = 7
 HeaderLabel.Parent = Header
 
--- Tombol Minimize (ganti toggle button lama)
+-- Tombol Minimize (- untuk tutup, + untuk buka)
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
 MinimizeBtn.Position = UDim2.new(1, -68, 0.5, -14)
 MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 160)
-MinimizeBtn.Text = "—"
+MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.TextSize = 14
+MinimizeBtn.TextSize = 18
 MinimizeBtn.BorderSizePixel = 0
 MinimizeBtn.ZIndex = 8
 MinimizeBtn.Parent = Header
 Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 6)
 
--- Tombol Close
+-- Tombol Close (X - dengan konfirmasi)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 28, 0, 28)
 CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(175, 32, 32)
-CloseBtn.Text = "✕"
+CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 12
+CloseBtn.TextSize = 13
 CloseBtn.BorderSizePixel = 0
 CloseBtn.ZIndex = 8
 CloseBtn.Parent = Header
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+-- ══════════════════════════════════════
+--         CONFIRM DIALOG (untuk Close)
+-- ══════════════════════════════════════
+local ConfirmFrame = Instance.new("Frame")
+ConfirmFrame.Size = UDim2.new(0, 260, 0, 120)
+ConfirmFrame.Position = UDim2.new(0, 8, 0, 52)
+ConfirmFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 28)
+ConfirmFrame.BorderSizePixel = 0
+ConfirmFrame.ZIndex = 20
+ConfirmFrame.Visible = false
+ConfirmFrame.Parent = MainFrame
+Instance.new("UICorner", ConfirmFrame).CornerRadius = UDim.new(0, 12)
+local cfStroke = Instance.new("UIStroke", ConfirmFrame)
+cfStroke.Color = Color3.fromRGB(180, 35, 35)
+cfStroke.Thickness = 1.5
+
+local ConfirmLabel = Instance.new("TextLabel")
+ConfirmLabel.Size = UDim2.new(1, 0, 0, 50)
+ConfirmLabel.Position = UDim2.new(0, 0, 0, 10)
+ConfirmLabel.BackgroundTransparency = 1
+ConfirmLabel.Text = "Yakin ingin close cheat?"
+ConfirmLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+ConfirmLabel.Font = Enum.Font.GothamBold
+ConfirmLabel.TextSize = 14
+ConfirmLabel.ZIndex = 21
+ConfirmLabel.Parent = ConfirmFrame
+
+local SubLabel = Instance.new("TextLabel")
+SubLabel.Size = UDim2.new(1, 0, 0, 20)
+SubLabel.Position = UDim2.new(0, 0, 0, 42)
+SubLabel.BackgroundTransparency = 1
+SubLabel.Text = "Cheat akan dinonaktifkan sepenuhnya."
+SubLabel.TextColor3 = Color3.fromRGB(150, 150, 180)
+SubLabel.Font = Enum.Font.Gotham
+SubLabel.TextSize = 11
+SubLabel.ZIndex = 21
+SubLabel.Parent = ConfirmFrame
+
+-- Tombol YA
+local YaBtn = Instance.new("TextButton")
+YaBtn.Size = UDim2.new(0, 100, 0, 34)
+YaBtn.Position = UDim2.new(0, 12, 1, -46)
+YaBtn.BackgroundColor3 = Color3.fromRGB(175, 32, 32)
+YaBtn.Text = "✓  Ya, Close"
+YaBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+YaBtn.Font = Enum.Font.GothamBold
+YaBtn.TextSize = 12
+YaBtn.BorderSizePixel = 0
+YaBtn.ZIndex = 21
+YaBtn.Parent = ConfirmFrame
+Instance.new("UICorner", YaBtn).CornerRadius = UDim.new(0, 8)
+
+-- Tombol TIDAK
+local TidakBtn = Instance.new("TextButton")
+TidakBtn.Size = UDim2.new(0, 100, 0, 34)
+TidakBtn.Position = UDim2.new(1, -112, 1, -46)
+TidakBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 140)
+TidakBtn.Text = "✗  Tidak"
+TidakBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+TidakBtn.Font = Enum.Font.GothamBold
+TidakBtn.TextSize = 12
+TidakBtn.BorderSizePixel = 0
+TidakBtn.ZIndex = 21
+TidakBtn.Parent = ConfirmFrame
+Instance.new("UICorner", TidakBtn).CornerRadius = UDim.new(0, 8)
 
 -- ══════════════════════════════════════
 --         SECTION LABEL
@@ -1210,30 +1276,66 @@ end)
 local isOpen = true
 local isMinimized = false
 
-local function setMenu(open)
-    isOpen = open
-    -- Saat close: sembunyikan seluruh MainFrame termasuk header
-    MainFrame.Visible = open
-end
-
 local function setMinimize(mini)
     isMinimized = mini
     ScrollFrame.Visible = not mini
     if mini then
         MainFrame.Size = UDim2.new(0, 275, 0, 46)
-        MinimizeBtn.Text = "□"
+        MinimizeBtn.Text = "+"
     else
         MainFrame.Size = UDim2.new(0, 275, 0, 420)
-        MinimizeBtn.Text = "—"
+        MinimizeBtn.Text = "-"
+        -- Update canvas saat expand
+        task.spawn(function()
+            task.wait(0.1)
+            ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 80)
+        end)
     end
 end
 
 MinimizeBtn.MouseButton1Click:Connect(function()
+    ConfirmFrame.Visible = false
     setMinimize(not isMinimized)
 end)
 
+-- Tombol X — tampilkan konfirmasi dulu
 CloseBtn.MouseButton1Click:Connect(function()
-    setMenu(false)
+    if isMinimized then setMinimize(false) end
+    ConfirmFrame.Visible = not ConfirmFrame.Visible
+end)
+
+-- Konfirmasi: YA → destroy semua
+YaBtn.MouseButton1Click:Connect(function()
+    -- Matikan semua fitur aktif
+    noclipEnabled    = false
+    speedEnabled     = false
+    autoStealEnabled = false
+    antiAfkEnabled   = false
+    antiHitEnabled   = false
+    fpsBoosted       = false
+    antiRagdoll      = false
+    espEnabled       = false
+
+    -- Bersihkan koneksi
+    if noclipConn   then noclipConn:Disconnect()   end
+    if speedConn    then speedConn:Disconnect()     end
+    if antiHitConn  then antiHitConn:Disconnect()  end
+    if antiRagConn  then antiRagConn:Disconnect()  end
+    if espConn      then pcall(function() task.cancel(espConn) end) end
+
+    -- Bersihkan ESP
+    clearESP()
+
+    -- Restore FPS jika aktif
+    if fpsBoosted then pcall(removeFPSBoost) end
+
+    -- Destroy seluruh UI
+    pcall(function() ScreenGui:Destroy() end)
+end)
+
+-- Konfirmasi: TIDAK → tutup dialog
+TidakBtn.MouseButton1Click:Connect(function()
+    ConfirmFrame.Visible = false
 end)
 
 -- ══════════════════════════════════════
