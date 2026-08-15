@@ -420,100 +420,101 @@ end)
 --         LOGIC — AUTO STEAL
 -- ══════════════════════════════════════
 
--- Konversi teks nilai ke angka (support $, /s, K, M, B, T, Qa)
-local function parseValue(txt)
+-- Parse rate per detik dari teks label (contoh: "$6B/s", "$1.8B/s", "$375M/s")
+local function parseRate(txt)
     if not txt or txt == "" then return 0 end
-    -- Ambil bagian rate ($/s) duluan jika ada, karena lebih relevan
-    local rateStr = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?%s*/s")
-    local flatStr = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?")
-    
-    local function convert(num, suffix)
-        local v = tonumber(num) or 0
-        suffix = suffix and suffix:upper() or ""
-        if suffix == "K" then return v * 1e3
-        elseif suffix == "M" then return v * 1e6
-        elseif suffix == "B" then return v * 1e9
-        elseif suffix == "T" then return v * 1e12
-        elseif suffix == "Q" then return v * 1e15
-        end
-        return v
+    -- Pattern: $angka + suffix + /s
+    local num, suf = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?%s*/[sS]")
+    if not num then return 0 end
+    local v = tonumber(num) or 0
+    suf = suf and suf:upper() or ""
+    if suf == "K" then return v * 1e3
+    elseif suf == "M" then return v * 1e6
+    elseif suf == "B" then return v * 1e9
+    elseif suf == "T" then return v * 1e12
+    elseif suf == "Q" then return v * 1e15
     end
-
-    if rateStr then
-        local num, suf = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?%s*/s")
-        return convert(num, suf) * 1e6 -- rate diberi bobot lebih tinggi
-    elseif flatStr then
-        local num, suf = txt:match("%$([%d%.]+)([KkMmBbTtQq]?)a?")
-        return convert(num, suf)
-    end
-    return 0
+    return v
 end
 
--- Cari semua BillboardGui di workspace yang punya tombol "Kumpulkan"
--- Lalu ambil yang value/rate-nya tertinggi
-local function findBestKumpulkan()
-    local bestBtn  = nil
+-- Format angka besar jadi teks singkat
+local function fmtVal(v)
+    if v >= 1e15 then return string.format("%.2fQa", v/1e15)
+    elseif v >= 1e12 then return string.format("%.2fT", v/1e12)
+    elseif v >= 1e9  then return string.format("%.2fB", v/1e9)
+    elseif v >= 1e6  then return string.format("%.2fM", v/1e6)
+    elseif v >= 1e3  then return string.format("%.2fK", v/1e3)
+    else return tostring(math.floor(v)) end
+end
+
+-- Scan seluruh workspace cari brainrot dengan rate /s tertinggi
+-- Strategi: cari TextLabel yang mengandung "/s", baca ratenya,
+-- lalu ambil BasePart terdekat sebagai target teleport
+local function findHighestRateBrainrot()
     local bestPart = nil
-    local bestVal  = -1
+    local bestRate = -1
+    local bestLabel = ""
 
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BillboardGui") then
-            -- Pastikan bukan milik player sendiri
-            local isOwn = false
-            local p = obj
-            for _ = 1, 8 do
-                p = p.Parent
-                if not p then break end
-                if p.Name == LocalPlayer.Name then isOwn = true; break end
-            end
-            if isOwn then continue end
+        -- Hanya scan TextLabel dan TextButton
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local txt = obj.Text or ""
 
-            -- Cari TextButton "Kumpulkan" di dalam BillboardGui ini
-            for _, child in ipairs(obj:GetDescendants()) do
-                if (child:IsA("TextButton") or child:IsA("TextLabel")) then
-                    local txt = child.Text or ""
-                    if txt:lower():find("kumpulkan") then
-                        -- Baca semua TextLabel di BillboardGui ini untuk cari nilai
-                        local totalVal = 0
-                        for _, sibling in ipairs(obj:GetDescendants()) do
-                            if sibling:IsA("TextLabel") or sibling:IsA("TextButton") then
-                                local v = parseValue(sibling.Text or "")
-                                if v > totalVal then totalVal = v end
+            -- Harus mengandung "/s" pattern rate
+            if txt:find("/[sS]") and txt:find("%$") then
+                local rate = parseRate(txt)
+                if rate > 0 and rate > bestRate then
+
+                    -- Pastikan bukan milik player sendiri
+                    local isOwn = false
+                    local p = obj
+                    for _ = 1, 10 do
+                        p = p.Parent
+                        if not p then break end
+                        if p.Name == LocalPlayer.Name then
+                            isOwn = true; break
+                        end
+                    end
+                    if isOwn then continue end
+
+                    -- Cari BasePart terdekat dari label ini
+                    -- Cek: parent BillboardGui → Adornee atau parent Model → PrimaryPart
+                    local targetPart = nil
+                    local gui = obj
+                    for _ = 1, 5 do
+                        gui = gui.Parent
+                        if not gui then break end
+                        if gui:IsA("BillboardGui") then
+                            if gui.Adornee and gui.Adornee:IsA("BasePart") then
+                                targetPart = gui.Adornee
+                            elseif gui.Parent and gui.Parent:IsA("BasePart") then
+                                targetPart = gui.Parent
+                            elseif gui.Parent and gui.Parent:IsA("Model") then
+                                targetPart = gui.Parent.PrimaryPart
+                                    or gui.Parent:FindFirstChildWhichIsA("BasePart")
                             end
+                            break
+                        elseif gui:IsA("BasePart") then
+                            targetPart = gui
+                            break
+                        elseif gui:IsA("Model") then
+                            targetPart = gui.PrimaryPart
+                                or gui:FindFirstChildWhichIsA("BasePart")
+                            break
                         end
+                    end
 
-                        -- Ambil part yang jadi adornee BillboardGui
-                        local adornee = obj.Adornee
-                        if not adornee and obj.Parent and obj.Parent:IsA("BasePart") then
-                            adornee = obj.Parent
-                        end
-                        if not adornee and obj.Parent then
-                            adornee = obj.Parent:FindFirstChildWhichIsA("BasePart")
-                        end
-
-                        if adornee and totalVal > bestVal then
-                            bestVal  = totalVal
-                            bestBtn  = child
-                            bestPart = adornee
-                        end
-                        break
+                    if targetPart then
+                        bestRate  = rate
+                        bestPart  = targetPart
+                        bestLabel = txt:gsub("%s+", " ")
                     end
                 end
             end
         end
     end
 
-    return bestBtn, bestPart, bestVal
-end
-
--- Format angka besar jadi teks singkat
-local function fmtVal(v)
-    if v >= 1e15 then return string.format("%.1fQa", v/1e15)
-    elseif v >= 1e12 then return string.format("%.1fT", v/1e12)
-    elseif v >= 1e9  then return string.format("%.1fB", v/1e9)
-    elseif v >= 1e6  then return string.format("%.1fM", v/1e6)
-    elseif v >= 1e3  then return string.format("%.1fK", v/1e3)
-    else return tostring(math.floor(v)) end
+    return bestPart, bestRate, bestLabel
 end
 
 -- Loop utama Auto Steal
@@ -523,36 +524,30 @@ local function runAutoSteal()
         local root = char and char:FindFirstChild("HumanoidRootPart")
 
         if root then
-            -- Step 1: scan semua Kumpulkan, ambil tertinggi
-            local btn, part, val = findBestKumpulkan()
+            -- Step 1: cari brainrot rate tertinggi
+            local part, rate, label = findHighestRateBrainrot()
 
-            if btn and part then
-                -- Step 2: teleport ke posisi brainrot
-                setStatus("Target: $" .. fmtVal(val) .. " — Menuju...", Color3.fromRGB(255, 210, 60))
+            if part and rate > 0 then
+                -- Step 2: teleport ke brainrot
+                setStatus("Curi " .. fmtVal(rate) .. "/s — Menuju...", Color3.fromRGB(255, 210, 60))
                 root.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
-                task.wait(0.4)
+                task.wait(0.5)
 
-                -- Step 3: fire tombol Kumpulkan (jika TextButton)
-                if btn:IsA("TextButton") then
-                    local old = btn.Parent and btn.Parent.Parent
-                    -- Simulasi klik
-                    btn.MouseButton1Click:Fire()
-                    -- Fallback: pindah ke atas part, game biasanya pakai ProximityPrompt / Touch
-                    root.CFrame = CFrame.new(part.Position + Vector3.new(0, 1, 0))
-                    task.wait(0.3)
-                end
+                -- Step 3: tetap di posisi sebentar agar trigger steal
+                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 1, 0))
+                task.wait(0.4)
 
                 -- Step 4: balik ke base
                 if savedBasePosition then
                     root.CFrame = savedBasePosition
-                    setStatus("Stolen $" .. fmtVal(val) .. " — Di base!", Color3.fromRGB(80, 220, 100))
-                    task.wait(0.6)
+                    setStatus("✓ Stolen " .. fmtVal(rate) .. "/s!", Color3.fromRGB(80, 220, 100))
+                    task.wait(0.8)
                 else
                     setStatus("Base belum di-save!", Color3.fromRGB(255, 180, 50))
                     task.wait(1)
                 end
             else
-                setStatus("Scanning... tidak ada target.", Color3.fromRGB(160, 160, 80))
+                setStatus("Scanning brainrot...", Color3.fromRGB(160, 160, 80))
                 task.wait(2)
             end
         else
