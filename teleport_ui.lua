@@ -51,7 +51,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ArZeroUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset = true
+pcall(function() ScreenGui.IgnoreGuiInset = true end)
 ScreenGui.Parent = PlayerGui
 
 -- ══════════════════════════════════════
@@ -153,7 +153,9 @@ ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 230)
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+pcall(function()
+    ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+end)
 ScrollFrame.ClipsDescendants = true
 ScrollFrame.ZIndex = 6
 ScrollFrame.Parent = MainFrame
@@ -162,6 +164,11 @@ local Layout = Instance.new("UIListLayout")
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Padding = UDim.new(0, 6)
 Layout.Parent = ScrollFrame
+
+-- Fallback update canvas size manual jika AutomaticCanvasSize tidak support
+Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
+end)
 
 local Pad = Instance.new("UIPadding")
 Pad.PaddingLeft = UDim.new(0, 12)
@@ -1027,12 +1034,14 @@ BtnAntiHit.MouseButton1Click:Connect(function()
                     end
                 end
 
-                -- Lock AssemblyLinearVelocity jika tiba-tiba melonjak (kena fling)
-                local vel = root.AssemblyLinearVelocity
-                if vel.Magnitude > 80 then
-                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                end
+                -- Lock velocity jika tiba-tiba melonjak (kena fling)
+                pcall(function()
+                    local vel = root.AssemblyLinearVelocity
+                    if vel.Magnitude > 80 then
+                        root.AssemblyLinearVelocity  = Vector3.new(0, 0, 0)
+                        root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    end
+                end)
             end
         end)
 
