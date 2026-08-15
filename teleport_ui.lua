@@ -575,26 +575,31 @@ end
 
 local function runAutoSteal()
     while autoStealEnabled do
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local ok, err = pcall(function()
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
 
-        if root then
-            -- Step 1: cari brainrot rate tertinggi
+            if not root then
+                task.wait(1)
+                return
+            end
+
+            -- Step 1: scan brainrot rate tertinggi
             local part, rate, label = findHighestRateBrainrot()
 
             if part and rate > 0 then
-                -- Step 2: teleport tepat ke posisi brainrot
+                -- Step 2: teleport ke brainrot
                 setStatus("Curi " .. fmtVal(rate) .. "/s — Menuju...", Color3.fromRGB(255, 210, 60))
                 root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2, 0))
-                task.wait(0.4) -- tunggu ProximityPrompt muncul
+                task.wait(0.4)
 
                 -- Step 3: fire ProximityPrompt "Mencuri"
                 triggerSteal(part)
                 task.wait(0.2)
-                triggerSteal(part) -- fire ulang untuk pastikan
+                triggerSteal(part)
                 task.wait(0.4)
 
-                -- Step 5: balik ke base
+                -- Step 4: balik ke base
                 if savedBasePosition then
                     root.CFrame = savedBasePosition
                     setStatus("✓ Stolen " .. fmtVal(rate) .. "/s!", Color3.fromRGB(80, 220, 100))
@@ -607,7 +612,11 @@ local function runAutoSteal()
                 setStatus("Scanning brainrot...", Color3.fromRGB(160, 160, 80))
                 task.wait(2)
             end
-        else
+        end)
+
+        -- Error tidak matikan loop, cukup jeda lalu lanjut
+        if not ok then
+            setStatus("Retry...", Color3.fromRGB(255, 150, 50))
             task.wait(1)
         end
     end
@@ -625,7 +634,16 @@ BtnAutoSteal.MouseButton1Click:Connect(function()
             return
         end
         setStatus("Auto Steal ON — Scanning...", Color3.fromRGB(100, 220, 100))
-        task.spawn(runAutoSteal)
+        -- task.spawn agar loop jalan di thread terpisah
+        -- jika loop mati karena apapun, spawn ulang selama flag masih true
+        task.spawn(function()
+            while autoStealEnabled do
+                local ok, err = pcall(runAutoSteal)
+                if not ok then
+                    task.wait(1) -- jeda sebentar lalu restart
+                end
+            end
+        end)
     else
         setStatus("Auto Steal OFF", Color3.fromRGB(200, 100, 100))
     end
