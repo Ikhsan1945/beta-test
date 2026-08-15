@@ -502,60 +502,56 @@ local function findHighestRateBrainrot()
                             isOwn = true; break
                         end
                     end
-                    if isOwn then continue end
 
-                    -- [ 2 ] Cari BasePart dari label
-                    local targetPart = nil
-                    local gui = obj
-                    for _ = 1, 5 do
-                        gui = gui.Parent
-                        if not gui then break end
-                        if gui:IsA("BillboardGui") then
-                            if gui.Adornee and gui.Adornee:IsA("BasePart") then
-                                targetPart = gui.Adornee
-                            elseif gui.Parent and gui.Parent:IsA("BasePart") then
-                                targetPart = gui.Parent
-                            elseif gui.Parent and gui.Parent:IsA("Model") then
-                                targetPart = gui.Parent.PrimaryPart
-                                    or gui.Parent:FindFirstChildWhichIsA("BasePart")
+                    if not isOwn then
+                        -- [ 2 ] Cari BasePart dari label
+                        local targetPart = nil
+                        local gui = obj
+                        for _ = 1, 5 do
+                            gui = gui.Parent
+                            if not gui then break end
+                            if gui:IsA("BillboardGui") then
+                                if gui.Adornee and gui.Adornee:IsA("BasePart") then
+                                    targetPart = gui.Adornee
+                                elseif gui.Parent and gui.Parent:IsA("BasePart") then
+                                    targetPart = gui.Parent
+                                elseif gui.Parent and gui.Parent:IsA("Model") then
+                                    targetPart = gui.Parent.PrimaryPart
+                                        or gui.Parent:FindFirstChildWhichIsA("BasePart")
+                                end
+                                break
+                            elseif gui:IsA("BasePart") then
+                                targetPart = gui; break
+                            elseif gui:IsA("Model") then
+                                targetPart = gui.PrimaryPart
+                                    or gui:FindFirstChildWhichIsA("BasePart")
+                                break
                             end
-                            break
-                        elseif gui:IsA("BasePart") then
-                            targetPart = gui; break
-                        elseif gui:IsA("Model") then
-                            targetPart = gui.PrimaryPart
-                                or gui:FindFirstChildWhichIsA("BasePart")
-                            break
+                        end
+
+                        if targetPart and not isBlacklisted(targetPart) then
+                            -- [ 3 ] Skip jika dekat base sendiri
+                            local nearOwnBase = false
+                            if savedBasePosition then
+                                local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
+                                if dist <= 35 then
+                                    nearOwnBase = true
+                                end
+                            end
+
+                            if not nearOwnBase then
+                                bestRate  = rate
+                                bestPart  = targetPart
+                                bestLabel = txt:gsub("%s+", " ")
+                            end
                         end
                     end
-
-                    if not targetPart then continue end
-
-                    -- [ 3 ] Skip jika di-blacklist
-                    if isBlacklisted(targetPart) then continue end
-
-                    -- [ 4 ] Skip jika SAAT INI dekat base sendiri
-                    -- Gunakan posisi REAL TIME part, bukan saved base
-                    -- Hanya skip jika part sekarang ada di base Ar
-                    local nearOwnBase = false
-                    if savedBasePosition then
-                        local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
-                        if dist <= 35 then
-                            nearOwnBase = true
-                        end
-                    end
-                    if nearOwnBase then continue end
-
-                    bestRate  = rate
-                    bestPart  = targetPart
-                    bestLabel = txt:gsub("%s+", " ")
                 end
             end
         end
     end
 
     return bestPart, bestRate, bestLabel
-end
 end
 
 -- Loop utama Auto Steal
@@ -785,29 +781,29 @@ local function refreshESP()
                         if not p then break end
                         if p.Name == LocalPlayer.Name then isOwn = true; break end
                     end
-                    if isOwn then continue end
 
-                    -- Skip area base sendiri
-                    local tooClose = false
-                    if savedBasePosition then
-                        -- cari part dulu
-                        local gui2 = obj
-                        local tempPart = nil
-                        for _ = 1, 5 do
-                            gui2 = gui2.Parent
-                            if not gui2 then break end
-                            if gui2:IsA("BasePart") then tempPart = gui2; break
-                            elseif gui2:IsA("Model") then
-                                tempPart = gui2.PrimaryPart or gui2:FindFirstChildWhichIsA("BasePart")
-                                break
+                    if not isOwn then
+                        -- Skip area base sendiri
+                        local tooClose = false
+                        if savedBasePosition then
+                            local gui2 = obj
+                            local tempPart = nil
+                            for _ = 1, 5 do
+                                gui2 = gui2.Parent
+                                if not gui2 then break end
+                                if gui2:IsA("BasePart") then tempPart = gui2; break
+                                elseif gui2:IsA("Model") then
+                                    tempPart = gui2.PrimaryPart or gui2:FindFirstChildWhichIsA("BasePart")
+                                    break
+                                end
+                            end
+                            if tempPart then
+                                local dist = (tempPart.Position - savedBasePosition.Position).Magnitude
+                                if dist <= 40 then tooClose = true end
                             end
                         end
-                        if tempPart then
-                            local dist = (tempPart.Position - savedBasePosition.Position).Magnitude
-                            if dist <= 40 then tooClose = true end
-                        end
-                    end
-                    if tooClose then continue end
+
+                        if not tooClose then
 
                     -- Cari nama brainrot dari ObjectText BillboardGui atau nama Model parent
                     local brainrotName = "Brainrot"
@@ -845,6 +841,8 @@ local function refreshESP()
                             pos  = targetPart.Position
                         })
                     end
+                        end -- if not tooClose
+                    end -- if not isOwn
                 end
             end
         end
