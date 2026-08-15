@@ -448,24 +448,21 @@ local function fmtVal(v)
 end
 
 -- Scan seluruh workspace cari brainrot dengan rate /s tertinggi
--- Strategi: cari TextLabel yang mengandung "/s", baca ratenya,
--- lalu ambil BasePart terdekat sebagai target teleport
+-- Skip brainrot yang ada di area base milik Ar sendiri (radius 40 stud dari savedBasePosition)
 local function findHighestRateBrainrot()
     local bestPart = nil
     local bestRate = -1
     local bestLabel = ""
 
     for _, obj in ipairs(workspace:GetDescendants()) do
-        -- Hanya scan TextLabel dan TextButton
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
             local txt = obj.Text or ""
 
-            -- Harus mengandung "/s" pattern rate
             if txt:find("/[sS]") and txt:find("%$") then
                 local rate = parseRate(txt)
                 if rate > 0 and rate > bestRate then
 
-                    -- Pastikan bukan milik player sendiri
+                    -- Skip milik player sendiri (parent chain)
                     local isOwn = false
                     local p = obj
                     for _ = 1, 10 do
@@ -478,7 +475,6 @@ local function findHighestRateBrainrot()
                     if isOwn then continue end
 
                     -- Cari BasePart terdekat dari label ini
-                    -- Cek: parent BillboardGui → Adornee atau parent Model → PrimaryPart
                     local targetPart = nil
                     local gui = obj
                     for _ = 1, 5 do
@@ -505,9 +501,21 @@ local function findHighestRateBrainrot()
                     end
 
                     if targetPart then
-                        bestRate  = rate
-                        bestPart  = targetPart
-                        bestLabel = txt:gsub("%s+", " ")
+                        -- Skip jika brainrot berada dekat base sendiri (radius 40 stud)
+                        local tooClose = false
+                        if savedBasePosition then
+                            local basePosV3 = savedBasePosition.Position
+                            local dist = (targetPart.Position - basePosV3).Magnitude
+                            if dist <= 40 then
+                                tooClose = true
+                            end
+                        end
+
+                        if not tooClose then
+                            bestRate  = rate
+                            bestPart  = targetPart
+                            bestLabel = txt:gsub("%s+", " ")
+                        end
                     end
                 end
             end
@@ -520,60 +528,45 @@ end
 -- Loop utama Auto Steal
 -- Trigger ProximityPrompt "Mencuri" di sekitar part target
 local function triggerSteal(part)
-    local ProximityPromptService = game:GetService("ProximityPromptService")
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
 
-    local function tryFire(prompt)
-        -- Method 1: TriggerPrompt via service
+    local function firePrompt(prompt)
+        -- Method 1: executor built-in (paling reliable)
         pcall(function()
-            ProximityPromptService:TriggerPrompt(prompt)
+            fireproximityprompt(prompt)
         end)
-        -- Method 2: Fire signal langsung
+        -- Method 2: TriggerPrompt via service
+        pcall(function()
+            game:GetService("ProximityPromptService"):TriggerPrompt(prompt)
+        end)
+        -- Method 3: Triggered signal
         pcall(function()
             prompt.Triggered:Fire(LocalPlayer)
         end)
-        -- Method 3: PromptButtonHoldBegan → PromptButtonHoldEnded
-        pcall(function()
-            prompt.PromptButtonHoldBegan:Fire(LocalPlayer)
-            task.wait(0.05)
-            prompt.PromptButtonHoldEnded:Fire(LocalPlayer)
-        end)
     end
 
-    -- Scan dari part → parent model → seluruh descendants
-    local targets = { part }
-    if part.Parent then table.insert(targets, part.Parent) end
-
-    for _, obj in ipairs(targets) do
-        if obj and obj:IsDescendantOf(workspace) then
-            for _, desc in ipairs(obj:GetDescendants()) do
-                if desc:IsA("ProximityPrompt") then
-                    local action = (desc.ActionText or ""):lower()
-                    local objText = (desc.ObjectText or ""):lower()
-                    -- Prioritas: "mencuri" / "steal" / "collect" / "kumpulkan"
-                    if action:find("mencuri") or action:find("steal") or
-                       action:find("collect") or action:find("kumpulkan") or
-                       objText:find("mencuri") or objText:find("steal") then
-                        tryFire(desc)
-                    end
+    -- Scan semua ProximityPrompt dalam radius 20 stud dari player
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local action = (obj.ActionText or ""):lower()
+            local okPos, pos = pcall(function()
+                local p = obj.Parent
+                while p do
+                    if p:IsA("BasePart") then return p.Position end
+                    p = p.Parent
                 end
-            end
-        end
-    end
-
-    -- Fallback: scan radius 20 studs dari posisi player
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if root then
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                local action = (obj.ActionText or ""):lower()
-                local ok, partPos = pcall(function()
-                    return obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent.Position
-                end)
-                if ok and partPos then
-                    local dist = (partPos - root.Position).Magnitude
-                    if dist <= 15 and (action:find("mencuri") or action:find("steal") or action:find("collect")) then
-                        tryFire(obj)
-                    end
+                return nil
+            end)
+            if okPos and pos then
+                local dist = (pos - root.Position).Magnitude
+                if dist <= 20 and (
+                    action:find("mencuri") or
+                    action:find("steal") or
+                    action:find("ambil") or
+                    action:find("collect")
+                ) then
+                    firePrompt(obj)
                 end
             end
         end
