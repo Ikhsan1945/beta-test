@@ -152,11 +152,8 @@ ScrollFrame.BackgroundTransparency = 1
 ScrollFrame.BorderSizePixel = 0
 ScrollFrame.ScrollBarThickness = 4
 ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 230)
-ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-ScrollFrame.ElasticBehavior = Enum.ElasticBehavior.Always
-ScrollFrame.ScrollingEnabled = true
 ScrollFrame.ClipsDescendants = true
 ScrollFrame.ZIndex = 6
 ScrollFrame.Parent = MainFrame
@@ -918,10 +915,12 @@ BtnAntiAfk.MouseButton1Click:Connect(function()
             while antiAfkEnabled do
                 task.wait(60)
                 if not antiAfkEnabled then break end
-                local vs = game:GetService("VirtualUser")
-                vs:Button2Down(Vector2.new(0,0), CFrame.new())
-                task.wait(0.1)
-                vs:Button2Up(Vector2.new(0,0), CFrame.new())
+                pcall(function()
+                    local vs = game:GetService("VirtualUser")
+                    vs:Button2Down(Vector2.new(0,0), CFrame.new())
+                    task.wait(0.1)
+                    vs:Button2Up(Vector2.new(0,0), CFrame.new())
+                end)
             end
         end)
     else
@@ -1054,20 +1053,25 @@ end)
 --         LOGIC — FPS BOOSTER
 -- ══════════════════════════════════════
 local Lighting  = game:GetService("Lighting")
-local gSettings = settings()
+local gSettings = nil
+pcall(function() gSettings = settings() end)
 
 local origValues = {
     GlobalShadows = Lighting.GlobalShadows,
     FogEnd        = Lighting.FogEnd,
     Brightness    = Lighting.Brightness,
-    QualityLevel  = gSettings.Rendering.QualityLevel,
+    QualityLevel  = gSettings and gSettings.Rendering and gSettings.Rendering.QualityLevel or nil,
 }
 
 local function applyFPSBoost()
     Lighting.GlobalShadows = false
     Lighting.FogEnd        = 9e9
     Lighting.Brightness    = 0
-    gSettings.Rendering.QualityLevel = Enum.QualityLevel.Level01
+    pcall(function()
+        if gSettings then
+            gSettings.Rendering.QualityLevel = Enum.QualityLevel.Level01
+        end
+    end)
 
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or
@@ -1085,7 +1089,11 @@ local function removeFPSBoost()
     Lighting.GlobalShadows = origValues.GlobalShadows
     Lighting.FogEnd        = origValues.FogEnd
     Lighting.Brightness    = origValues.Brightness
-    gSettings.Rendering.QualityLevel = origValues.QualityLevel
+    pcall(function()
+        if gSettings and origValues.QualityLevel then
+            gSettings.Rendering.QualityLevel = origValues.QualityLevel
+        end
+    end)
 
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or
