@@ -55,34 +55,16 @@ ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
 -- ══════════════════════════════════════
---         TOGGLE BUTTON
--- ══════════════════════════════════════
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Size = UDim2.new(0, 126, 0, 36)
-ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(14, 14, 26)
-ToggleBtn.TextColor3 = Color3.fromRGB(160, 210, 255)
-ToggleBtn.Text = "⚡ Ar Zero  ☰"
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.TextSize = 13
-ToggleBtn.BorderSizePixel = 0
-ToggleBtn.ZIndex = 10
-ToggleBtn.Parent = ScreenGui
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 9)
-local tStroke = Instance.new("UIStroke", ToggleBtn)
-tStroke.Color = Color3.fromRGB(60, 100, 210)
-tStroke.Thickness = 1.4
-
--- ══════════════════════════════════════
 --         MAIN FRAME
 -- ══════════════════════════════════════
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 275, 0, 400)
-MainFrame.Position = UDim2.new(0, 10, 0, 55)
+MainFrame.Size = UDim2.new(0, 275, 0, 420)
+-- Posisi awal: tengah kiri, hindari tombol Roblox di atas
+MainFrame.Position = UDim2.new(0, 10, 0.35, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 19)
 MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
 MainFrame.ZIndex = 5
 MainFrame.Parent = ScreenGui
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
@@ -101,8 +83,9 @@ Header.ZIndex = 6
 Header.Parent = MainFrame
 Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 14)
 
+-- Icon + Judul
 local HeaderLabel = Instance.new("TextLabel")
-HeaderLabel.Size = UDim2.new(1, -50, 1, 0)
+HeaderLabel.Size = UDim2.new(1, -90, 1, 0)
 HeaderLabel.Position = UDim2.new(0, 14, 0, 0)
 HeaderLabel.BackgroundTransparency = 1
 HeaderLabel.Text = "⚡ Ar Zero — Menu"
@@ -113,6 +96,21 @@ HeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
 HeaderLabel.ZIndex = 7
 HeaderLabel.Parent = Header
 
+-- Tombol Minimize (ganti toggle button lama)
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+MinimizeBtn.Position = UDim2.new(1, -68, 0.5, -14)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 160)
+MinimizeBtn.Text = "—"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 14
+MinimizeBtn.BorderSizePixel = 0
+MinimizeBtn.ZIndex = 8
+MinimizeBtn.Parent = Header
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 6)
+
+-- Tombol Close
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 28, 0, 28)
 CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
@@ -152,10 +150,14 @@ ScrollFrame.Size = UDim2.new(1, 0, 1, -50)
 ScrollFrame.Position = UDim2.new(0, 0, 0, 50)
 ScrollFrame.BackgroundTransparency = 1
 ScrollFrame.BorderSizePixel = 0
-ScrollFrame.ScrollBarThickness = 3
-ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 100, 210)
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 120, 230)
+ScrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
 ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.ElasticBehavior = Enum.ElasticBehavior.Always
+ScrollFrame.ScrollingEnabled = true
+ScrollFrame.ClipsDescendants = true
 ScrollFrame.ZIndex = 6
 ScrollFrame.Parent = MainFrame
 
@@ -453,10 +455,29 @@ local function fmtVal(v)
 end
 
 -- Scan seluruh workspace cari brainrot dengan rate /s tertinggi
--- Skip brainrot yang ada di area base milik Ar sendiri (radius 40 stud dari savedBasePosition)
+-- Blacklist: part yang sudah dicuri diblacklist sementara
+local stealBlacklist = {} -- { [part] = expireTime }
+
+local function isBlacklisted(part)
+    if stealBlacklist[part] then
+        if tick() < stealBlacklist[part] then
+            return true -- masih dalam blacklist
+        else
+            stealBlacklist[part] = nil -- expired, hapus
+        end
+    end
+    return false
+end
+
+local function addBlacklist(part, duration)
+    stealBlacklist[part] = tick() + (duration or 30)
+end
+
+-- Scan brainrot dengan rate /s tertinggi
+-- Skip: milik sendiri, dekat base sendiri, sudah di-blacklist
 local function findHighestRateBrainrot()
-    local bestPart = nil
-    local bestRate = -1
+    local bestPart  = nil
+    local bestRate  = -1
     local bestLabel = ""
 
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -467,7 +488,7 @@ local function findHighestRateBrainrot()
                 local rate = parseRate(txt)
                 if rate > 0 and rate > bestRate then
 
-                    -- Skip milik player sendiri (parent chain)
+                    -- [ 1 ] Skip milik player sendiri
                     local isOwn = false
                     local p = obj
                     for _ = 1, 10 do
@@ -479,7 +500,7 @@ local function findHighestRateBrainrot()
                     end
                     if isOwn then continue end
 
-                    -- Cari BasePart terdekat dari label ini
+                    -- [ 2 ] Cari BasePart dari label
                     local targetPart = nil
                     local gui = obj
                     for _ = 1, 5 do
@@ -496,8 +517,7 @@ local function findHighestRateBrainrot()
                             end
                             break
                         elseif gui:IsA("BasePart") then
-                            targetPart = gui
-                            break
+                            targetPart = gui; break
                         elseif gui:IsA("Model") then
                             targetPart = gui.PrimaryPart
                                 or gui:FindFirstChildWhichIsA("BasePart")
@@ -505,29 +525,33 @@ local function findHighestRateBrainrot()
                         end
                     end
 
-                    if targetPart then
-                        -- Skip jika brainrot berada dekat base sendiri (radius 40 stud)
-                        local tooClose = false
-                        if savedBasePosition then
-                            local basePosV3 = savedBasePosition.Position
-                            local dist = (targetPart.Position - basePosV3).Magnitude
-                            if dist <= 40 then
-                                tooClose = true
-                            end
-                        end
+                    if not targetPart then continue end
 
-                        if not tooClose then
-                            bestRate  = rate
-                            bestPart  = targetPart
-                            bestLabel = txt:gsub("%s+", " ")
+                    -- [ 3 ] Skip jika di-blacklist
+                    if isBlacklisted(targetPart) then continue end
+
+                    -- [ 4 ] Skip jika SAAT INI dekat base sendiri
+                    -- Gunakan posisi REAL TIME part, bukan saved base
+                    -- Hanya skip jika part sekarang ada di base Ar
+                    local nearOwnBase = false
+                    if savedBasePosition then
+                        local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
+                        if dist <= 35 then
+                            nearOwnBase = true
                         end
                     end
+                    if nearOwnBase then continue end
+
+                    bestRate  = rate
+                    bestPart  = targetPart
+                    bestLabel = txt:gsub("%s+", " ")
                 end
             end
         end
     end
 
     return bestPart, bestRate, bestLabel
+end
 end
 
 -- Loop utama Auto Steal
@@ -603,6 +627,9 @@ local function runAutoSteal()
                 task.wait(0.2)
                 triggerSteal(part)
                 task.wait(0.4)
+
+                -- Blacklist part ini 25 detik agar tidak di-steal ulang
+                addBlacklist(part, 25)
 
                 -- Step 4: balik ke base
                 if savedBasePosition then
@@ -1164,12 +1191,33 @@ BtnAntiRag.MouseButton1Click:Connect(function()
 end)
 
 local isOpen = true
+local isMinimized = false
+
 local function setMenu(open)
     isOpen = open
+    -- Saat close: sembunyikan seluruh MainFrame termasuk header
     MainFrame.Visible = open
 end
-ToggleBtn.MouseButton1Click:Connect(function() setMenu(not isOpen) end)
-CloseBtn.MouseButton1Click:Connect(function() setMenu(false) end)
+
+local function setMinimize(mini)
+    isMinimized = mini
+    ScrollFrame.Visible = not mini
+    if mini then
+        MainFrame.Size = UDim2.new(0, 275, 0, 46)
+        MinimizeBtn.Text = "□"
+    else
+        MainFrame.Size = UDim2.new(0, 275, 0, 420)
+        MinimizeBtn.Text = "—"
+    end
+end
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    setMinimize(not isMinimized)
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    setMenu(false)
+end)
 
 -- ══════════════════════════════════════
 --         DRAGGABLE — MAIN FRAME
@@ -1199,38 +1247,6 @@ UserInputService.InputChanged:Connect(function(input)
         MainFrame.Position = UDim2.new(
             startPos.X.Scale, startPos.X.Offset + d.X,
             startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
-    end
-end)
-
--- ══════════════════════════════════════
---         DRAGGABLE — TOGGLE BTN
--- ══════════════════════════════════════
-local tDrag, tDragStart, tStartPos = false, nil, nil
-
-ToggleBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or
-       input.UserInputType == Enum.UserInputType.MouseButton1 then
-        tDrag = true
-        tDragStart = input.Position
-        tStartPos = ToggleBtn.Position
-    end
-end)
-ToggleBtn.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or
-       input.UserInputType == Enum.UserInputType.MouseButton1 then
-        tDrag = false
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if tDrag and (
-        input.UserInputType == Enum.UserInputType.MouseMovement or
-        input.UserInputType == Enum.UserInputType.Touch
-    ) then
-        local d = input.Position - tDragStart
-        ToggleBtn.Position = UDim2.new(
-            tStartPos.X.Scale, tStartPos.X.Offset + d.X,
-            tStartPos.Y.Scale, tStartPos.Y.Offset + d.Y
         )
     end
 end)
