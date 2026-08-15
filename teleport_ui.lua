@@ -25,6 +25,7 @@ local antiAfkEnabled    = false
 local antiHitEnabled    = false
 local fpsBoosted        = false
 local antiRagdoll       = false
+local espEnabled        = false
 local autoStealEnabled  = false
 local noclipConn        = nil
 local autoStealConn     = nil
@@ -278,6 +279,10 @@ local BtnSpeed,  setSpeed    = createToggleBtn("Speed Hack", "⚡", 12)
 -- [ FARM ]
 makeSection(ScrollFrame, "── FARM ──", 20)
 local BtnAutoSteal, setAutoSteal = createToggleBtn("Auto Steal", "🤖", 21)
+
+-- [ VISUAL ]
+makeSection(ScrollFrame, "── VISUAL ──", 25)
+local BtnESP, setESP = createToggleBtn("ESP Brainrot", "👁️", 26)
 
 -- [ UTILITY ]
 makeSection(ScrollFrame, "── UTILITY ──", 30)
@@ -650,6 +655,229 @@ BtnAutoSteal.MouseButton1Click:Connect(function()
 end)
 
 -- ══════════════════════════════════════
+--         LOGIC — ESP BRAINROT
+-- ══════════════════════════════════════
+local espConn     = nil
+local espFolder   = nil
+local ESP_REFRESH = 3 -- detik refresh ESP
+
+-- Hapus semua ESP billboard yang sudah ada
+local function clearESP()
+    if espFolder then
+        pcall(function() espFolder:Destroy() end)
+        espFolder = nil
+    end
+end
+
+-- Buat BillboardGui ESP di atas part target
+local function createESPTag(part, brainrotName, rate)
+    if not part or not part.Parent then return end
+
+    local bill = Instance.new("BillboardGui")
+    bill.Name = "ArZeroESP"
+    bill.Size = UDim2.new(0, 200, 0, 70)
+    bill.StudsOffset = Vector3.new(0, 4, 0)
+    bill.AlwaysOnTop = true
+    bill.MaxDistance = 500
+    bill.Adornee = part
+    bill.Parent = espFolder
+
+    -- Box highlight
+    local highlight = Instance.new("SelectionBox")
+    highlight.Color3 = Color3.fromRGB(255, 80, 80)
+    highlight.LineThickness = 0.06
+    highlight.SurfaceTransparency = 0.7
+    highlight.SurfaceColor3 = Color3.fromRGB(255, 80, 80)
+    highlight.Adornee = part
+    highlight.Parent = espFolder
+
+    -- Frame container
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(8, 8, 18)
+    frame.BackgroundTransparency = 0.3
+    frame.BorderSizePixel = 0
+    frame.Parent = bill
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(255, 80, 80)
+    stroke.Thickness = 1.2
+
+    -- Nama brainrot
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = "🧠 " .. brainrotName
+    nameLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 13
+    nameLabel.TextScaled = true
+    nameLabel.Parent = frame
+
+    -- Rate label
+    local rateLabel = Instance.new("TextLabel")
+    rateLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    rateLabel.Position = UDim2.new(0, 0, 0.5, 0)
+    rateLabel.BackgroundTransparency = 1
+    rateLabel.Text = "💰 " .. fmtVal(rate) .. "/s  ★ TERTINGGI"
+    rateLabel.TextColor3 = Color3.fromRGB(100, 255, 140)
+    rateLabel.Font = Enum.Font.GothamSemibold
+    rateLabel.TextSize = 11
+    rateLabel.TextScaled = true
+    rateLabel.Parent = frame
+end
+
+-- Scan semua base lain, ambil brainrot tertinggi per base, pasang ESP
+local function refreshESP()
+    clearESP()
+    if not espEnabled then return end
+
+    espFolder = Instance.new("Folder")
+    espFolder.Name = "ArZeroESPFolder"
+    espFolder.Parent = workspace
+
+    -- Kumpulkan semua TextLabel dengan rate /s
+    -- Group berdasarkan area (base) — pakai threshold jarak 60 stud
+    local allTargets = {}
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local txt = obj.Text or ""
+            if txt:find("/[sS]") and txt:find("%$") then
+                local rate = parseRate(txt)
+                if rate > 0 then
+                    -- Skip milik sendiri
+                    local isOwn = false
+                    local p = obj
+                    for _ = 1, 10 do
+                        p = p.Parent
+                        if not p then break end
+                        if p.Name == LocalPlayer.Name then isOwn = true; break end
+                    end
+                    if isOwn then continue end
+
+                    -- Skip area base sendiri
+                    local tooClose = false
+                    if savedBasePosition then
+                        -- cari part dulu
+                        local gui2 = obj
+                        local tempPart = nil
+                        for _ = 1, 5 do
+                            gui2 = gui2.Parent
+                            if not gui2 then break end
+                            if gui2:IsA("BasePart") then tempPart = gui2; break
+                            elseif gui2:IsA("Model") then
+                                tempPart = gui2.PrimaryPart or gui2:FindFirstChildWhichIsA("BasePart")
+                                break
+                            end
+                        end
+                        if tempPart then
+                            local dist = (tempPart.Position - savedBasePosition.Position).Magnitude
+                            if dist <= 40 then tooClose = true end
+                        end
+                    end
+                    if tooClose then continue end
+
+                    -- Cari nama brainrot dari ObjectText BillboardGui atau nama Model parent
+                    local brainrotName = "Brainrot"
+                    local targetPart = nil
+                    local gui = obj
+                    for _ = 1, 6 do
+                        gui = gui.Parent
+                        if not gui then break end
+                        if gui:IsA("BillboardGui") then
+                            brainrotName = gui.Name ~= "BillboardGui" and gui.Name or brainrotName
+                            if gui.Adornee and gui.Adornee:IsA("BasePart") then
+                                targetPart = gui.Adornee
+                            elseif gui.Parent and gui.Parent:IsA("BasePart") then
+                                targetPart = gui.Parent
+                            elseif gui.Parent and gui.Parent:IsA("Model") then
+                                brainrotName = gui.Parent.Name ~= "" and gui.Parent.Name or brainrotName
+                                targetPart = gui.Parent.PrimaryPart or gui.Parent:FindFirstChildWhichIsA("BasePart")
+                            end
+                            break
+                        elseif gui:IsA("Model") then
+                            brainrotName = gui.Name ~= "" and gui.Name or brainrotName
+                            targetPart = gui.PrimaryPart or gui:FindFirstChildWhichIsA("BasePart")
+                            break
+                        elseif gui:IsA("BasePart") then
+                            targetPart = gui
+                            break
+                        end
+                    end
+
+                    if targetPart then
+                        table.insert(allTargets, {
+                            part = targetPart,
+                            rate = rate,
+                            name = brainrotName,
+                            pos  = targetPart.Position
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- Group per base (radius 60 stud), ambil tertinggi per group
+    local grouped = {}
+    for _, t in ipairs(allTargets) do
+        local found = false
+        for _, g in ipairs(grouped) do
+            if (t.pos - g.pos).Magnitude <= 60 then
+                -- Bandingkan, simpan yang tertinggi
+                if t.rate > g.rate then
+                    g.part = t.part
+                    g.rate = t.rate
+                    g.name = t.name
+                    g.pos  = t.pos
+                end
+                found = true
+                break
+            end
+        end
+        if not found then
+            table.insert(grouped, { part = t.part, rate = t.rate, name = t.name, pos = t.pos })
+        end
+    end
+
+    -- Pasang ESP hanya untuk tertinggi per base
+    for _, g in ipairs(grouped) do
+        pcall(function()
+            createESPTag(g.part, g.name, g.rate)
+        end)
+    end
+
+    setStatus("ESP: " .. #grouped .. " base terdeteksi", Color3.fromRGB(100, 200, 255))
+end
+
+BtnESP.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    setESP(espEnabled)
+
+    if espEnabled then
+        -- Refresh ESP sekarang dan loop tiap 3 detik
+        refreshESP()
+        espConn = task.spawn(function()
+            while espEnabled do
+                task.wait(ESP_REFRESH)
+                if espEnabled then
+                    pcall(refreshESP)
+                end
+            end
+        end)
+        setStatus("ESP ON — Scanning base...", Color3.fromRGB(100, 220, 100))
+    else
+        if espConn then
+            pcall(function() task.cancel(espConn) end)
+            espConn = nil
+        end
+        clearESP()
+        setStatus("ESP OFF", Color3.fromRGB(200, 100, 100))
+    end
+end)
+
+-- ══════════════════════════════════════
 --         LOGIC — ANTI AFK
 -- ══════════════════════════════════════
 BtnAntiAfk.MouseButton1Click:Connect(function()
@@ -675,25 +903,41 @@ BtnAntiAfk.MouseButton1Click:Connect(function()
 end)
 
 -- ══════════════════════════════════════
---         LOGIC — ANTI HIT
+--         LOGIC — ANTI HIT (UPGRADED)
 -- ══════════════════════════════════════
 local function applyAntiHit(char)
     if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hum  = char:FindFirstChildOfClass("Humanoid")
     local root = char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    -- Pasang ForceField agar tidak bisa di-damage
-    local ff = char:FindFirstChildOfClass("ForceField")
-    if not ff then
-        ff = Instance.new("ForceField")
+    -- [ 1 ] ForceField — blok damage
+    if not char:FindFirstChildOfClass("ForceField") then
+        local ff = Instance.new("ForceField")
         ff.Visible = false
         ff.Parent = char
     end
 
-    -- Jaga health tetap penuh setiap frame
+    -- [ 2 ] Health tak terbatas
     hum.MaxHealth = math.huge
-    hum.Health = math.huge
+    hum.Health    = math.huge
+
+    -- [ 3 ] Disable PlatformStand (mencegah stun/ragdoll dari hit)
+    hum.PlatformStand = false
+
+    -- [ 4 ] Hapus semua BodyVelocity/BodyForce/BodyGyro di root
+    -- yang dipasang dari luar untuk fling/knockback
+    for _, obj in ipairs(root:GetChildren()) do
+        if obj:IsA("BodyVelocity") or
+           obj:IsA("BodyForce") or
+           obj:IsA("BodyPosition") or
+           obj:IsA("BodyAngularVelocity") or
+           obj:IsA("LinearVelocity") or
+           obj:IsA("AngularVelocity") or
+           obj:IsA("VectorForce") then
+            obj:Destroy()
+        end
+    end
 end
 
 local function removeAntiHit(char)
@@ -702,8 +946,9 @@ local function removeAntiHit(char)
     if ff then ff:Destroy() end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.MaxHealth = 100
-        hum.Health = 100
+        hum.MaxHealth     = 100
+        hum.Health        = 100
+        hum.PlatformStand = false
     end
 end
 
@@ -714,25 +959,54 @@ BtnAntiHit.MouseButton1Click:Connect(function()
         antiHitEnabled and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
 
     if antiHitEnabled then
-        -- Apply ke karakter sekarang
         applyAntiHit(LocalPlayer.Character)
 
-        -- Loop jaga health + reapply jika health turun
         antiHitConn = RunService.Heartbeat:Connect(function()
             local char = LocalPlayer.Character
             if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hum  = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+
             if hum then
-                hum.MaxHealth = math.huge
-                if hum.Health < hum.MaxHealth then
-                    hum.Health = math.huge
+                -- Jaga health
+                hum.MaxHealth     = math.huge
+                hum.Health        = math.huge
+                -- Cegah stun
+                hum.PlatformStand = false
+                -- Cegah ragdoll state
+                if hum:GetState() == Enum.HumanoidStateType.Ragdoll or
+                   hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                    hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                 end
             end
-            -- Pastikan ForceField tetap ada
-            if not char:FindFirstChildOfClass("ForceField") then
+
+            -- Jaga ForceField
+            if char and not char:FindFirstChildOfClass("ForceField") then
                 local ff = Instance.new("ForceField")
                 ff.Visible = false
-                ff.Parent = char
+                ff.Parent  = char
+            end
+
+            -- Hapus semua force/velocity yang dipasang dari luar (anti knockback/fling)
+            if root then
+                for _, obj in ipairs(root:GetChildren()) do
+                    if obj:IsA("BodyVelocity") or
+                       obj:IsA("BodyForce") or
+                       obj:IsA("BodyPosition") or
+                       obj:IsA("BodyAngularVelocity") or
+                       obj:IsA("LinearVelocity") or
+                       obj:IsA("AngularVelocity") or
+                       obj:IsA("VectorForce") then
+                        obj:Destroy()
+                    end
+                end
+
+                -- Lock AssemblyLinearVelocity jika tiba-tiba melonjak (kena fling)
+                local vel = root.AssemblyLinearVelocity
+                if vel.Magnitude > 80 then
+                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end
             end
         end)
 
