@@ -165,16 +165,18 @@ Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Padding = UDim.new(0, 6)
 Layout.Parent = ScrollFrame
 
--- Fallback update canvas size manual jika AutomaticCanvasSize tidak support
-Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20)
-end)
+-- Update canvas size setiap konten berubah
+local function updateCanvas()
+    task.wait()
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 80)
+end
+Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
 
 local Pad = Instance.new("UIPadding")
-Pad.PaddingLeft = UDim.new(0, 12)
-Pad.PaddingRight = UDim.new(0, 14)
-Pad.PaddingTop = UDim.new(0, 10)
-Pad.PaddingBottom = UDim.new(0, 10)
+Pad.PaddingLeft   = UDim.new(0, 12)
+Pad.PaddingRight  = UDim.new(0, 14)
+Pad.PaddingTop    = UDim.new(0, 10)
+Pad.PaddingBottom = UDim.new(0, 60)
 Pad.Parent = ScrollFrame
 
 -- ══════════════════════════════════════
@@ -1264,6 +1266,12 @@ UserInputService.InputChanged:Connect(function(input)
             startPos.Y.Scale, startPos.Y.Offset + d.Y
         )
     end
+end)
+
+-- Force update canvas setelah semua UI selesai dibuat
+task.spawn(function()
+    task.wait(0.5)
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 80)
 end)
 
 print("[ Ar Zero ] UI Loaded.")
