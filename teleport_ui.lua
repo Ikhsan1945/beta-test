@@ -518,6 +518,68 @@ local function findHighestRateBrainrot()
 end
 
 -- Loop utama Auto Steal
+-- Trigger ProximityPrompt "Mencuri" di sekitar part target
+local function triggerSteal(part)
+    local ProximityPromptService = game:GetService("ProximityPromptService")
+
+    local function tryFire(prompt)
+        -- Method 1: TriggerPrompt via service
+        pcall(function()
+            ProximityPromptService:TriggerPrompt(prompt)
+        end)
+        -- Method 2: Fire signal langsung
+        pcall(function()
+            prompt.Triggered:Fire(LocalPlayer)
+        end)
+        -- Method 3: PromptButtonHoldBegan → PromptButtonHoldEnded
+        pcall(function()
+            prompt.PromptButtonHoldBegan:Fire(LocalPlayer)
+            task.wait(0.05)
+            prompt.PromptButtonHoldEnded:Fire(LocalPlayer)
+        end)
+    end
+
+    -- Scan dari part → parent model → seluruh descendants
+    local targets = { part }
+    if part.Parent then table.insert(targets, part.Parent) end
+
+    for _, obj in ipairs(targets) do
+        if obj and obj:IsDescendantOf(workspace) then
+            for _, desc in ipairs(obj:GetDescendants()) do
+                if desc:IsA("ProximityPrompt") then
+                    local action = (desc.ActionText or ""):lower()
+                    local objText = (desc.ObjectText or ""):lower()
+                    -- Prioritas: "mencuri" / "steal" / "collect" / "kumpulkan"
+                    if action:find("mencuri") or action:find("steal") or
+                       action:find("collect") or action:find("kumpulkan") or
+                       objText:find("mencuri") or objText:find("steal") then
+                        tryFire(desc)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Fallback: scan radius 20 studs dari posisi player
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if root then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local action = (obj.ActionText or ""):lower()
+                local ok, partPos = pcall(function()
+                    return obj.Parent and obj.Parent:IsA("BasePart") and obj.Parent.Position
+                end)
+                if ok and partPos then
+                    local dist = (partPos - root.Position).Magnitude
+                    if dist <= 15 and (action:find("mencuri") or action:find("steal") or action:find("collect")) then
+                        tryFire(obj)
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function runAutoSteal()
     while autoStealEnabled do
         local char = LocalPlayer.Character
@@ -528,16 +590,18 @@ local function runAutoSteal()
             local part, rate, label = findHighestRateBrainrot()
 
             if part and rate > 0 then
-                -- Step 2: teleport ke brainrot
+                -- Step 2: teleport tepat ke posisi brainrot
                 setStatus("Curi " .. fmtVal(rate) .. "/s — Menuju...", Color3.fromRGB(255, 210, 60))
-                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
-                task.wait(0.5)
+                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2, 0))
+                task.wait(0.4) -- tunggu ProximityPrompt muncul
 
-                -- Step 3: tetap di posisi sebentar agar trigger steal
-                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 1, 0))
+                -- Step 3: fire ProximityPrompt "Mencuri"
+                triggerSteal(part)
+                task.wait(0.2)
+                triggerSteal(part) -- fire ulang untuk pastikan
                 task.wait(0.4)
 
-                -- Step 4: balik ke base
+                -- Step 5: balik ke base
                 if savedBasePosition then
                     root.CFrame = savedBasePosition
                     setStatus("✓ Stolen " .. fmtVal(rate) .. "/s!", Color3.fromRGB(80, 220, 100))
