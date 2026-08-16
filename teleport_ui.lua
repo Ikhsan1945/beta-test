@@ -532,124 +532,132 @@ end
 
 local function findHighestRateBrainrot()
 
-    -- STEP 1: kumpulkan posisi semua prompt "Ambil" (tanda base sendiri)
+    -- Helper: ambil posisi dari instance apapun
+    local function getPos(obj)
+        if not obj then return nil end
+        if obj:IsA("BasePart") then return obj.Position end
+        if obj:IsA("Model") then
+            if obj.PrimaryPart then return obj.PrimaryPart.Position end
+            local bp = obj:FindFirstChildWhichIsA("BasePart")
+            if bp then return bp.Position end
+        end
+        return nil
+    end
+
+    -- Helper: ambil BasePart dari instance
+    local function getPart(obj)
+        if not obj then return nil end
+        if obj:IsA("BasePart") then return obj end
+        if obj:IsA("Model") then
+            return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        end
+        return nil
+    end
+
+    -- STEP 1: kumpulkan posisi prompt "Ambil" (base sendiri)
     local ambilPos = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
             local act = (obj.ActionText or ""):lower()
             if act:find("ambil") or act:find("pickup") then
                 local p = obj.Parent
-                for _ = 1, 5 do
+                for _ = 1, 8 do
                     if not p then break end
-                    if p:IsA("BasePart") then
-                        table.insert(ambilPos, p.Position); break
-                    elseif p:IsA("Model") then
-                        local pp = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
-                        if pp then table.insert(ambilPos, pp.Position) end
-                        break
-                    end
+                    local pos = getPos(p)
+                    if pos then table.insert(ambilPos, pos); break end
                     p = p.Parent
                 end
             end
         end
     end
 
-    -- STEP 2: kumpulkan semua ProximityPrompt "Mencuri" dengan posisinya
-    local mencuriPrompts = {}
+    -- STEP 2: kumpulkan semua prompt "Mencuri" dengan posisi
+    local mencuriList = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
             local act = (obj.ActionText or ""):lower()
             if act:find("mencuri") or act:find("steal") then
-                local targetPart = nil
                 local p = obj.Parent
-                for _ = 1, 5 do
+                for _ = 1, 8 do
                     if not p then break end
-                    if p:IsA("BasePart") then
-                        targetPart = p; break
-                    elseif p:IsA("Model") then
-                        targetPart = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                    local part = getPart(p)
+                    if part then
+                        table.insert(mencuriList, { part = part, pos = part.Position })
                         break
                     end
                     p = p.Parent
                 end
-                if targetPart then
-                    table.insert(mencuriPrompts, {
-                        part = targetPart,
-                        pos  = targetPart.Position
-                    })
-                end
             end
         end
     end
 
-    if #mencuriPrompts == 0 then return nil, -1, "" end
+    if #mencuriList == 0 then return nil, -1, "" end
 
-    -- STEP 3: kumpulkan semua TextLabel /s dan rate-nya
-    local rateLabels = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local txt = obj.Text or ""
-            if txt:find("/[sS]") and txt:find("%$") then
-                local r = parseRate(txt)
-                if r > 0 then
-                    -- Cari posisi label
-                    local lblPos = nil
-                    local g = obj
-                    for _ = 1, 6 do
-                        g = g.Parent
-                        if not g then break end
-                        if g:IsA("BillboardGui") then
-                            local ad = g.Adornee
-                            if ad and ad:IsA("BasePart") then
-                                lblPos = ad.Position
-                            elseif g.Parent and g.Parent:IsA("BasePart") then
-                                lblPos = g.Parent.Position
-                            elseif g.Parent and g.Parent:IsA("Model") then
-                                local pp = g.Parent.PrimaryPart or g.Parent:FindFirstChildWhichIsA("BasePart")
-                                if pp then lblPos = pp.Position end
-                            end
-                            break
-                        elseif g:IsA("BasePart") then
-                            lblPos = g.Position; break
-                        elseif g:IsA("Model") then
-                            local pp = g.PrimaryPart or g:FindFirstChildWhichIsA("BasePart")
-                            if pp then lblPos = pp.Position end
-                            break
+    -- STEP 3: scan BillboardGui yang punya TextLabel /s
+    -- BillboardGui bisa di workspace (adornee ke Model) atau nested di Model
+    local rateEntries = {}
+
+    for _, bg in ipairs(workspace:GetDescendants()) do
+        if bg:IsA("BillboardGui") then
+            -- Dapatkan posisi dari BillboardGui
+            local bgPos = nil
+            if bg.Adornee then
+                bgPos = getPos(bg.Adornee)
+            end
+            if not bgPos then
+                bgPos = getPos(bg.Parent)
+            end
+
+            if bgPos then
+                -- Scan semua TextLabel di dalam BillboardGui
+                local bestRate = 0
+                for _, child in ipairs(bg:GetDescendants()) do
+                    if child:IsA("TextLabel") or child:IsA("TextButton") then
+                        local txt = child.Text or ""
+                        if txt:find("/[sS]") and txt:find("%$") then
+                            local r = parseRate(txt)
+                            if r > bestRate then bestRate = r end
                         end
                     end
-                    if lblPos then
-                        table.insert(rateLabels, { pos = lblPos, rate = r, txt = txt })
-                    end
+                end
+
+                if bestRate > 0 then
+                    table.insert(rateEntries, { pos = bgPos, rate = bestRate })
                 end
             end
         end
     end
 
-    -- STEP 4: sort rate labels dari TERTINGGI
-    table.sort(rateLabels, function(a, b) return a.rate > b.rate end)
+    if #rateEntries == 0 then return nil, -1, "" end
 
-    -- STEP 5: dari rate tertinggi, cari ProximityPrompt "Mencuri" terdekat
-    for _, lbl in ipairs(rateLabels) do
-        -- Cek bukan base sendiri (ada "Ambil" dalam radius 20 stud)
+    -- STEP 4: sort dari rate TERTINGGI
+    table.sort(rateEntries, function(a, b) return a.rate > b.rate end)
+
+    -- STEP 5: dari rate tertinggi, cocokkan dengan prompt "Mencuri" terdekat
+    for _, entry in ipairs(rateEntries) do
+
+        -- Skip jika base sendiri (ada "Ambil" dalam 20 stud)
         local ownBase = false
         for _, aPos in ipairs(ambilPos) do
-            if (aPos - lbl.pos).Magnitude <= 20 then
+            if (aPos - entry.pos).Magnitude <= 20 then
                 ownBase = true; break
             end
         end
+
         if not ownBase then
-            -- Cari ProximityPrompt "Mencuri" terdekat dari label ini
+            -- Cari prompt "Mencuri" yang PALING DEKAT dari entry ini (tanpa batas jarak)
             local bestPart = nil
             local bestDist = math.huge
-            for _, mp in ipairs(mencuriPrompts) do
-                local d = (mp.pos - lbl.pos).Magnitude
-                if d < bestDist and d <= 25 then
+            for _, mp in ipairs(mencuriList) do
+                local d = (mp.pos - entry.pos).Magnitude
+                if d < bestDist then
                     bestDist = d
                     bestPart = mp.part
                 end
             end
+
             if bestPart then
-                return bestPart, lbl.rate, ""
+                return bestPart, entry.rate, ""
             end
         end
     end
