@@ -555,21 +555,20 @@ local function findHighestRateBrainrot()
     local bestRate  = -1
     local bestLabel = ""
 
-    -- Helper: cek apakah ada ProximityPrompt "Mencuri" di model ini
+    -- Helper: cek apakah ada ProximityPrompt "Mencuri" dalam radius 10 stud dari targetPart
     local function hasMencuriPrompt(part)
         if not part then return false end
-        local model = part.Parent
-        local toCheck = { part }
-        if model then table.insert(toCheck, model) end
-        if model and model.Parent then table.insert(toCheck, model.Parent) end
+        local partPos = part.Position
 
-        for _, obj in ipairs(toCheck) do
-            if obj then
-                for _, desc in ipairs(obj:GetDescendants()) do
-                    if desc:IsA("ProximityPrompt") then
-                        local action = (desc.ActionText or ""):lower()
-                        -- Hanya "Mencuri" yang valid, skip "Beli" / "Buy" / dll
-                        if action:find("mencuri") or action:find("steal") then
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") then
+                local action = (obj.ActionText or ""):lower()
+                if action:find("mencuri") or action:find("steal") then
+                    -- Cek jarak prompt ke targetPart
+                    local promptPart = obj.Parent
+                    if promptPart and promptPart:IsA("BasePart") then
+                        local dist = (promptPart.Position - partPos).Magnitude
+                        if dist <= 10 then
                             return true
                         end
                     end
@@ -759,8 +758,8 @@ local function runAutoSteal()
                 triggerSteal(part)
                 task.wait(0.4)
 
-                -- Blacklist part ini 25 detik agar tidak di-steal ulang
-                addBlacklist(part, 25)
+                -- Blacklist part ini 8 detik agar tidak di-steal ulang segera
+                addBlacklist(part, 8)
 
                 -- Step 4: balik ke base
                 if savedBasePosition then
