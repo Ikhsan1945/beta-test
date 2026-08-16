@@ -555,35 +555,28 @@ local function findHighestRateBrainrot()
     local bestRate  = -1
     local bestLabel = ""
 
-    -- Helper: cek apakah ada ProximityPrompt "Mencuri" dalam radius 15 stud dari targetPart
-    local function hasMencuriPrompt(part)
+    -- Helper: cek apakah ada prompt "Ambil" dalam radius dari part
+    -- Jika ada = ini base sendiri, skip
+    local function isOwnBase(part)
         if not part then return false end
-        local partPos = part.Position
-
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("ProximityPrompt") then
                 local action = (obj.ActionText or ""):lower()
-                if action:find("mencuri") or action:find("steal") then
-                    -- Traverse naik dari prompt untuk cari posisi
-                    local promptPos = nil
+                if action:find("ambil") or action:find("collect") or action:find("pickup") then
                     local p = obj.Parent
+                    local pos = nil
                     for _ = 1, 5 do
                         if not p then break end
-                        if p:IsA("BasePart") then
-                            promptPos = p.Position
-                            break
-                        elseif p:IsA("Model") and p.PrimaryPart then
-                            promptPos = p.PrimaryPart.Position
+                        if p:IsA("BasePart") then pos = p.Position; break
+                        elseif p:IsA("Model") then
+                            local pp = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                            if pp then pos = pp.Position end
                             break
                         end
                         p = p.Parent
                     end
-
-                    if promptPos then
-                        local dist = (promptPos - partPos).Magnitude
-                        if dist <= 15 then
-                            return true
-                        end
+                    if pos and (pos - part.Position).Magnitude <= 15 then
+                        return true
                     end
                 end
             end
@@ -591,72 +584,86 @@ local function findHighestRateBrainrot()
         return false
     end
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local txt = obj.Text or ""
+    -- Scan ProximityPrompt "Mencuri" sebagai anchor utama
+    for _, prompt in ipairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") then
+            local action = (prompt.ActionText or ""):lower()
 
-            if txt:find("/[sS]") and txt:find("%$") then
-                local rate = parseRate(txt)
-                if rate > 0 and rate > bestRate then
+            if action:find("mencuri") or action:find("steal") then
 
-                    -- [ 1 ] Skip milik player sendiri
-                    local isOwn = false
-                    local p = obj
-                    for _ = 1, 10 do
-                        p = p.Parent
-                        if not p then break end
-                        if p.Name == LocalPlayer.Name then
-                            isOwn = true; break
-                        end
+                -- Ambil BasePart dari prompt
+                local targetPart = nil
+                local p = prompt.Parent
+                for _ = 1, 5 do
+                    if not p then break end
+                    if p:IsA("BasePart") then
+                        targetPart = p; break
+                    elseif p:IsA("Model") then
+                        targetPart = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                        break
                     end
+                    p = p.Parent
+                end
 
-                    if not isOwn then
-                        -- [ 2 ] Cari BasePart dari label
-                        local targetPart = nil
-                        local gui = obj
-                        for _ = 1, 5 do
-                            gui = gui.Parent
-                            if not gui then break end
-                            if gui:IsA("BillboardGui") then
-                                if gui.Adornee and gui.Adornee:IsA("BasePart") then
-                                    targetPart = gui.Adornee
-                                elseif gui.Parent and gui.Parent:IsA("BasePart") then
-                                    targetPart = gui.Parent
-                                elseif gui.Parent and gui.Parent:IsA("Model") then
-                                    targetPart = gui.Parent.PrimaryPart
-                                        or gui.Parent:FindFirstChildWhichIsA("BasePart")
-                                end
-                                break
-                            elseif gui:IsA("BasePart") then
-                                targetPart = gui; break
-                            elseif gui:IsA("Model") then
-                                targetPart = gui.PrimaryPart
-                                    or gui:FindFirstChildWhichIsA("BasePart")
-                                break
-                            end
+                if targetPart and not isBlacklisted(targetPart) then
+
+                    -- Skip jika base sendiri (ada prompt "Ambil" di sekitar)
+                    if not isOwnBase(targetPart) then
+
+                        -- Skip milik player sendiri via parent name
+                        local isOwn = false
+                        local pp = targetPart
+                        for _ = 1, 10 do
+                            pp = pp.Parent
+                            if not pp then break end
+                            if pp.Name == LocalPlayer.Name then isOwn = true; break end
                         end
 
-                        if targetPart and not isBlacklisted(targetPart) then
-
-                            -- [ 3 ] WAJIB ada ProximityPrompt "Mencuri"
-                            -- Jika hanya ada "Beli" / tidak ada prompt → skip (itu toko/shop)
-                            local canSteal = hasMencuriPrompt(targetPart)
-
-                            if canSteal then
-                                -- [ 4 ] Skip jika dekat base sendiri
-                                local nearOwnBase = false
-                                if savedBasePosition then
-                                    local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
-                                    if dist <= 35 then
-                                        nearOwnBase = true
+                        if not isOwn then
+                            -- Cari rate /s dari BillboardGui terdekat (radius 20 stud)
+                            local rate = 0
+                            for _, obj in ipairs(workspace:GetDescendants()) do
+                                if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+                                    local txt = obj.Text or ""
+                                    if txt:find("/[sS]") and txt:find("%$") then
+                                        local lblPos = nil
+                                        local g = obj
+                                        for _ = 1, 5 do
+                                            g = g.Parent
+                                            if not g then break end
+                                            if g:IsA("BillboardGui") then
+                                                local ad = g.Adornee
+                                                if ad and ad:IsA("BasePart") then
+                                                    lblPos = ad.Position
+                                                elseif g.Parent and g.Parent:IsA("BasePart") then
+                                                    lblPos = g.Parent.Position
+                                                elseif g.Parent and g.Parent:IsA("Model") then
+                                                    local pp2 = g.Parent.PrimaryPart or g.Parent:FindFirstChildWhichIsA("BasePart")
+                                                    if pp2 then lblPos = pp2.Position end
+                                                end
+                                                break
+                                            elseif g:IsA("BasePart") then
+                                                lblPos = g.Position; break
+                                            elseif g:IsA("Model") then
+                                                local pp2 = g.PrimaryPart or g:FindFirstChildWhichIsA("BasePart")
+                                                if pp2 then lblPos = pp2.Position end
+                                                break
+                                            end
+                                        end
+                                        if lblPos and (lblPos - targetPart.Position).Magnitude <= 20 then
+                                            local r = parseRate(txt)
+                                            if r > rate then rate = r end
+                                        end
                                     end
                                 end
+                            end
 
-                                if not nearOwnBase then
-                                    bestRate  = rate
-                                    bestPart  = targetPart
-                                    bestLabel = txt:gsub("%s+", " ")
-                                end
+                            if rate == 0 then rate = 1 end
+
+                            if rate > bestRate then
+                                bestRate  = rate
+                                bestPart  = targetPart
+                                bestLabel = prompt.ObjectText or ""
                             end
                         end
                     end
