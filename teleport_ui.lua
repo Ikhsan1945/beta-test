@@ -531,27 +531,21 @@ end
 
 
 local function findHighestRateBrainrot()
-    local candidates   = {}
-    local ambilPositions = {} -- posisi semua prompt "Ambil" (base sendiri)
-    local rateMap        = {} -- { posKey -> rate } dari TextLabel /s
 
-    -- PASS 1: kumpulkan data sekali saja, tidak nested
-    local allDesc = workspace:GetDescendants()
-
-    -- 1a. Kumpulkan posisi prompt "Ambil" (tanda base sendiri)
-    for _, obj in ipairs(allDesc) do
+    -- STEP 1: kumpulkan posisi semua prompt "Ambil" (tanda base sendiri)
+    local ambilPos = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
-            local action = (obj.ActionText or ""):lower()
-            if action:find("ambil") or action:find("pickup") then
+            local act = (obj.ActionText or ""):lower()
+            if act:find("ambil") or act:find("pickup") then
                 local p = obj.Parent
                 for _ = 1, 5 do
                     if not p then break end
                     if p:IsA("BasePart") then
-                        table.insert(ambilPositions, p.Position)
-                        break
+                        table.insert(ambilPos, p.Position); break
                     elseif p:IsA("Model") then
                         local pp = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
-                        if pp then table.insert(ambilPositions, pp.Position) end
+                        if pp then table.insert(ambilPos, pp.Position) end
                         break
                     end
                     p = p.Parent
@@ -560,18 +554,48 @@ local function findHighestRateBrainrot()
         end
     end
 
-    -- 1b. Kumpulkan semua TextLabel rate /s beserta posisinya
+    -- STEP 2: kumpulkan semua ProximityPrompt "Mencuri" dengan posisinya
+    local mencuriPrompts = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") then
+            local act = (obj.ActionText or ""):lower()
+            if act:find("mencuri") or act:find("steal") then
+                local targetPart = nil
+                local p = obj.Parent
+                for _ = 1, 5 do
+                    if not p then break end
+                    if p:IsA("BasePart") then
+                        targetPart = p; break
+                    elseif p:IsA("Model") then
+                        targetPart = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                        break
+                    end
+                    p = p.Parent
+                end
+                if targetPart then
+                    table.insert(mencuriPrompts, {
+                        part = targetPart,
+                        pos  = targetPart.Position
+                    })
+                end
+            end
+        end
+    end
+
+    if #mencuriPrompts == 0 then return nil, -1, "" end
+
+    -- STEP 3: kumpulkan semua TextLabel /s dan rate-nya
     local rateLabels = {}
-    for _, obj in ipairs(allDesc) do
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
             local txt = obj.Text or ""
             if txt:find("/[sS]") and txt:find("%$") then
                 local r = parseRate(txt)
                 if r > 0 then
-                    -- Cari posisi dari label ini
+                    -- Cari posisi label
                     local lblPos = nil
                     local g = obj
-                    for _ = 1, 5 do
+                    for _ = 1, 6 do
                         g = g.Parent
                         if not g then break end
                         if g:IsA("BillboardGui") then
@@ -594,86 +618,42 @@ local function findHighestRateBrainrot()
                         end
                     end
                     if lblPos then
-                        table.insert(rateLabels, { pos = lblPos, rate = r })
+                        table.insert(rateLabels, { pos = lblPos, rate = r, txt = txt })
                     end
                 end
             end
         end
     end
 
-    -- PASS 2: scan ProximityPrompt "Mencuri", match ke data yang sudah dikumpulkan
-    for _, prompt in ipairs(allDesc) do
-        if prompt:IsA("ProximityPrompt") then
-            local action = (prompt.ActionText or ""):lower()
-            if action:find("mencuri") or action:find("steal") then
+    -- STEP 4: sort rate labels dari TERTINGGI
+    table.sort(rateLabels, function(a, b) return a.rate > b.rate end)
 
-                -- Ambil BasePart dari prompt
-                local targetPart = nil
-                local p = prompt.Parent
-                for _ = 1, 5 do
-                    if not p then break end
-                    if p:IsA("BasePart") then
-                        targetPart = p; break
-                    elseif p:IsA("Model") then
-                        targetPart = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
-                        break
-                    end
-                    p = p.Parent
+    -- STEP 5: dari rate tertinggi, cari ProximityPrompt "Mencuri" terdekat
+    for _, lbl in ipairs(rateLabels) do
+        -- Cek bukan base sendiri (ada "Ambil" dalam radius 20 stud)
+        local ownBase = false
+        for _, aPos in ipairs(ambilPos) do
+            if (aPos - lbl.pos).Magnitude <= 20 then
+                ownBase = true; break
+            end
+        end
+        if not ownBase then
+            -- Cari ProximityPrompt "Mencuri" terdekat dari label ini
+            local bestPart = nil
+            local bestDist = math.huge
+            for _, mp in ipairs(mencuriPrompts) do
+                local d = (mp.pos - lbl.pos).Magnitude
+                if d < bestDist and d <= 25 then
+                    bestDist = d
+                    bestPart = mp.part
                 end
-
-                if targetPart then
-                    local tPos = targetPart.Position
-
-                    -- Cek apakah ini base sendiri
-                    local ownBase = false
-                    for _, aPos in ipairs(ambilPositions) do
-                        if (aPos - tPos).Magnitude <= 15 then
-                            ownBase = true; break
-                        end
-                    end
-
-                    if not ownBase then
-                        -- Cek milik player sendiri via parent
-                        local isOwn = false
-                        local pp = targetPart
-                        for _ = 1, 10 do
-                            pp = pp.Parent
-                            if not pp then break end
-                            if pp.Name == LocalPlayer.Name then isOwn = true; break end
-                        end
-
-                        if not isOwn then
-                            -- Cari rate tertinggi dari rateLabels yang dekat
-                            local rate = 0
-                            for _, lbl in ipairs(rateLabels) do
-                                if (lbl.pos - tPos).Magnitude <= 20 then
-                                    if lbl.rate > rate then rate = lbl.rate end
-                                end
-                            end
-
-                            -- Wajib ada rate /s asli
-                            if rate > 0 then
-                                table.insert(candidates, {
-                                    part  = targetPart,
-                                    rate  = rate,
-                                    label = prompt.ObjectText or ""
-                                })
-                            end
-                        end
-                    end
-                end
+            end
+            if bestPart then
+                return bestPart, lbl.rate, ""
             end
         end
     end
 
-    -- Sort dari rate TERTINGGI ke terendah
-    table.sort(candidates, function(a, b)
-        return a.rate > b.rate
-    end)
-
-    if #candidates > 0 then
-        return candidates[1].part, candidates[1].rate, candidates[1].label
-    end
     return nil, -1, ""
 end
 
