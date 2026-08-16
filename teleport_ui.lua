@@ -672,6 +672,8 @@ local function findHighestRateBrainrot()
 
     setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " NoMatch/OwnBase", Color3.fromRGB(255, 180, 50))
     return nil, -1, ""
+end
+
 local function triggerSteal(part)
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return end
