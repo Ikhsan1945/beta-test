@@ -529,62 +529,82 @@ local function fmtVal(v)
     else return tostring(math.floor(v)) end
 end
 
--- Scan seluruh workspace cari brainrot dengan rate /s tertinggi
--- Blacklist: part yang sudah dicuri diblacklist sementara
-local stealBlacklist = {} -- { [part] = expireTime }
 
-local function isBlacklisted(part)
-    if stealBlacklist[part] then
-        if tick() < stealBlacklist[part] then
-            return true -- masih dalam blacklist
-        else
-            stealBlacklist[part] = nil -- expired, hapus
+local function findHighestRateBrainrot()
+    local candidates   = {}
+    local ambilPositions = {} -- posisi semua prompt "Ambil" (base sendiri)
+    local rateMap        = {} -- { posKey -> rate } dari TextLabel /s
+
+    -- PASS 1: kumpulkan data sekali saja, tidak nested
+    local allDesc = workspace:GetDescendants()
+
+    -- 1a. Kumpulkan posisi prompt "Ambil" (tanda base sendiri)
+    for _, obj in ipairs(allDesc) do
+        if obj:IsA("ProximityPrompt") then
+            local action = (obj.ActionText or ""):lower()
+            if action:find("ambil") or action:find("pickup") then
+                local p = obj.Parent
+                for _ = 1, 5 do
+                    if not p then break end
+                    if p:IsA("BasePart") then
+                        table.insert(ambilPositions, p.Position)
+                        break
+                    elseif p:IsA("Model") then
+                        local pp = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                        if pp then table.insert(ambilPositions, pp.Position) end
+                        break
+                    end
+                    p = p.Parent
+                end
+            end
         end
     end
-    return false
-end
 
-local function addBlacklist(part, duration)
-    stealBlacklist[part] = tick() + (duration or 30)
-end
-
--- Scan brainrot dengan rate /s tertinggi
--- Skip: milik sendiri, dekat base sendiri, sudah di-blacklist
-local function findHighestRateBrainrot()
-    local candidates = {}
-
-    -- Helper: cek apakah ada prompt "Ambil" dalam radius dari part (base sendiri)
-    local function isOwnBase(part)
-        if not part then return false end
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                local action = (obj.ActionText or ""):lower()
-                if action:find("ambil") or action:find("pickup") then
-                    local p = obj.Parent
-                    local pos = nil
+    -- 1b. Kumpulkan semua TextLabel rate /s beserta posisinya
+    local rateLabels = {}
+    for _, obj in ipairs(allDesc) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local txt = obj.Text or ""
+            if txt:find("/[sS]") and txt:find("%$") then
+                local r = parseRate(txt)
+                if r > 0 then
+                    -- Cari posisi dari label ini
+                    local lblPos = nil
+                    local g = obj
                     for _ = 1, 5 do
-                        if not p then break end
-                        if p:IsA("BasePart") then pos = p.Position; break
-                        elseif p:IsA("Model") then
-                            local pp2 = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
-                            if pp2 then pos = pp2.Position end; break
+                        g = g.Parent
+                        if not g then break end
+                        if g:IsA("BillboardGui") then
+                            local ad = g.Adornee
+                            if ad and ad:IsA("BasePart") then
+                                lblPos = ad.Position
+                            elseif g.Parent and g.Parent:IsA("BasePart") then
+                                lblPos = g.Parent.Position
+                            elseif g.Parent and g.Parent:IsA("Model") then
+                                local pp = g.Parent.PrimaryPart or g.Parent:FindFirstChildWhichIsA("BasePart")
+                                if pp then lblPos = pp.Position end
+                            end
+                            break
+                        elseif g:IsA("BasePart") then
+                            lblPos = g.Position; break
+                        elseif g:IsA("Model") then
+                            local pp = g.PrimaryPart or g:FindFirstChildWhichIsA("BasePart")
+                            if pp then lblPos = pp.Position end
+                            break
                         end
-                        p = p.Parent
                     end
-                    if pos and (pos - part.Position).Magnitude <= 15 then
-                        return true
+                    if lblPos then
+                        table.insert(rateLabels, { pos = lblPos, rate = r })
                     end
                 end
             end
         end
-        return false
     end
 
-    -- Scan ProximityPrompt "Mencuri" sebagai anchor utama
-    for _, prompt in ipairs(workspace:GetDescendants()) do
+    -- PASS 2: scan ProximityPrompt "Mencuri", match ke data yang sudah dikumpulkan
+    for _, prompt in ipairs(allDesc) do
         if prompt:IsA("ProximityPrompt") then
             local action = (prompt.ActionText or ""):lower()
-
             if action:find("mencuri") or action:find("steal") then
 
                 -- Ambil BasePart dari prompt
@@ -601,12 +621,19 @@ local function findHighestRateBrainrot()
                     p = p.Parent
                 end
 
-                if targetPart and not isBlacklisted(targetPart) then
+                if targetPart then
+                    local tPos = targetPart.Position
 
-                    -- Skip jika base sendiri (ada prompt "Ambil" di sekitar)
-                    if not isOwnBase(targetPart) then
+                    -- Cek apakah ini base sendiri
+                    local ownBase = false
+                    for _, aPos in ipairs(ambilPositions) do
+                        if (aPos - tPos).Magnitude <= 15 then
+                            ownBase = true; break
+                        end
+                    end
 
-                        -- Skip milik player sendiri via parent name
+                    if not ownBase then
+                        -- Cek milik player sendiri via parent
                         local isOwn = false
                         local pp = targetPart
                         for _ = 1, 10 do
@@ -616,45 +643,15 @@ local function findHighestRateBrainrot()
                         end
 
                         if not isOwn then
-                            -- Cari rate /s dari BillboardGui terdekat (radius 20 stud)
+                            -- Cari rate tertinggi dari rateLabels yang dekat
                             local rate = 0
-                            for _, obj in ipairs(workspace:GetDescendants()) do
-                                if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-                                    local txt = obj.Text or ""
-                                    if txt:find("/[sS]") and txt:find("%$") then
-                                        local lblPos = nil
-                                        local g = obj
-                                        for _ = 1, 5 do
-                                            g = g.Parent
-                                            if not g then break end
-                                            if g:IsA("BillboardGui") then
-                                                local ad = g.Adornee
-                                                if ad and ad:IsA("BasePart") then
-                                                    lblPos = ad.Position
-                                                elseif g.Parent and g.Parent:IsA("BasePart") then
-                                                    lblPos = g.Parent.Position
-                                                elseif g.Parent and g.Parent:IsA("Model") then
-                                                    local pp2 = g.Parent.PrimaryPart or g.Parent:FindFirstChildWhichIsA("BasePart")
-                                                    if pp2 then lblPos = pp2.Position end
-                                                end
-                                                break
-                                            elseif g:IsA("BasePart") then
-                                                lblPos = g.Position; break
-                                            elseif g:IsA("Model") then
-                                                local pp2 = g.PrimaryPart or g:FindFirstChildWhichIsA("BasePart")
-                                                if pp2 then lblPos = pp2.Position end
-                                                break
-                                            end
-                                        end
-                                        if lblPos and (lblPos - targetPart.Position).Magnitude <= 20 then
-                                            local r = parseRate(txt)
-                                            if r > rate then rate = r end
-                                        end
-                                    end
+                            for _, lbl in ipairs(rateLabels) do
+                                if (lbl.pos - tPos).Magnitude <= 20 then
+                                    if lbl.rate > rate then rate = lbl.rate end
                                 end
                             end
 
-                            -- Wajib ada rate /s asli — skip jika tidak ada
+                            -- Wajib ada rate /s asli
                             if rate > 0 then
                                 table.insert(candidates, {
                                     part  = targetPart,
@@ -675,15 +672,12 @@ local function findHighestRateBrainrot()
     end)
 
     if #candidates > 0 then
-        local best = candidates[1]
-        return best.part, best.rate, best.label
+        return candidates[1].part, candidates[1].rate, candidates[1].label
     end
-
     return nil, -1, ""
 end
 
--- Loop utama Auto Steal
--- Trigger ProximityPrompt "Mencuri" di sekitar part target
+
 local function triggerSteal(part)
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return end
@@ -770,40 +764,51 @@ local function runAutoSteal()
                 return
             end
 
-            -- Step 1: scan brainrot rate tertinggi
+            -- Step 1: scan di thread terpisah agar tidak freeze game
+            setStatus("Scanning...", Color3.fromRGB(160, 160, 80))
+            task.wait(0) -- yield 1 frame sebelum scan berat
+
             local part, rate, label = findHighestRateBrainrot()
+            task.wait(0) -- yield setelah scan selesai
 
             if part and rate > 0 then
                 -- Step 2: teleport ke brainrot
+                char = LocalPlayer.Character
+                root = char and char:FindFirstChild("HumanoidRootPart")
+                if not root then return end
+
                 setStatus("Curi " .. fmtVal(rate) .. "/s — Menuju...", Color3.fromRGB(255, 210, 60))
                 root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2, 0))
-                task.wait(0.4)
+                task.wait(0.5)
 
                 -- Step 3: fire ProximityPrompt "Mencuri"
+                char = LocalPlayer.Character
+                root = char and char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2, 0))
+                end
                 triggerSteal(part)
                 task.wait(0.2)
                 triggerSteal(part)
-                task.wait(0.4)
-
-                -- Blacklist part ini 8 detik agar tidak di-steal ulang segera
-                addBlacklist(part, 8)
+                task.wait(0.5)
 
                 -- Step 4: balik ke base
-                if savedBasePosition then
+                char = LocalPlayer.Character
+                root = char and char:FindFirstChild("HumanoidRootPart")
+                if root and savedBasePosition then
                     root.CFrame = savedBasePosition
                     setStatus("✓ Stolen " .. fmtVal(rate) .. "/s!", Color3.fromRGB(80, 220, 100))
-                    task.wait(0.8)
-                else
+                    task.wait(1)
+                elseif not savedBasePosition then
                     setStatus("Base belum di-save!", Color3.fromRGB(255, 180, 50))
                     task.wait(1)
                 end
             else
-                setStatus("Scanning brainrot...", Color3.fromRGB(160, 160, 80))
+                setStatus("Tidak ada target — Scan ulang...", Color3.fromRGB(160, 160, 80))
                 task.wait(2)
             end
         end)
 
-        -- Error tidak matikan loop, cukup jeda lalu lanjut
         if not ok then
             setStatus("Retry...", Color3.fromRGB(255, 150, 50))
             task.wait(1)
