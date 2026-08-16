@@ -555,7 +555,7 @@ local function findHighestRateBrainrot()
     local bestRate  = -1
     local bestLabel = ""
 
-    -- Helper: cek apakah ada ProximityPrompt "Mencuri" dalam radius 10 stud dari targetPart
+    -- Helper: cek apakah ada ProximityPrompt "Mencuri" dalam radius 15 stud dari targetPart
     local function hasMencuriPrompt(part)
         if not part then return false end
         local partPos = part.Position
@@ -564,11 +564,24 @@ local function findHighestRateBrainrot()
             if obj:IsA("ProximityPrompt") then
                 local action = (obj.ActionText or ""):lower()
                 if action:find("mencuri") or action:find("steal") then
-                    -- Cek jarak prompt ke targetPart
-                    local promptPart = obj.Parent
-                    if promptPart and promptPart:IsA("BasePart") then
-                        local dist = (promptPart.Position - partPos).Magnitude
-                        if dist <= 10 then
+                    -- Traverse naik dari prompt untuk cari posisi
+                    local promptPos = nil
+                    local p = obj.Parent
+                    for _ = 1, 5 do
+                        if not p then break end
+                        if p:IsA("BasePart") then
+                            promptPos = p.Position
+                            break
+                        elseif p:IsA("Model") and p.PrimaryPart then
+                            promptPos = p.PrimaryPart.Position
+                            break
+                        end
+                        p = p.Parent
+                    end
+
+                    if promptPos then
+                        local dist = (promptPos - partPos).Magnitude
+                        if dist <= 15 then
                             return true
                         end
                     end
