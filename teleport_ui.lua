@@ -551,27 +551,23 @@ end
 -- Scan brainrot dengan rate /s tertinggi
 -- Skip: milik sendiri, dekat base sendiri, sudah di-blacklist
 local function findHighestRateBrainrot()
-    local bestPart  = nil
-    local bestRate  = -1
-    local bestLabel = ""
+    local candidates = {}
 
-    -- Helper: cek apakah ada prompt "Ambil" dalam radius dari part
-    -- Jika ada = ini base sendiri, skip
+    -- Helper: cek apakah ada prompt "Ambil" dalam radius dari part (base sendiri)
     local function isOwnBase(part)
         if not part then return false end
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("ProximityPrompt") then
                 local action = (obj.ActionText or ""):lower()
-                if action:find("ambil") or action:find("collect") or action:find("pickup") then
+                if action:find("ambil") or action:find("pickup") then
                     local p = obj.Parent
                     local pos = nil
                     for _ = 1, 5 do
                         if not p then break end
                         if p:IsA("BasePart") then pos = p.Position; break
                         elseif p:IsA("Model") then
-                            local pp = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
-                            if pp then pos = pp.Position end
-                            break
+                            local pp2 = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                            if pp2 then pos = pp2.Position end; break
                         end
                         p = p.Parent
                     end
@@ -658,12 +654,13 @@ local function findHighestRateBrainrot()
                                 end
                             end
 
-                            if rate == 0 then rate = 1 end
-
-                            if rate > bestRate then
-                                bestRate  = rate
-                                bestPart  = targetPart
-                                bestLabel = prompt.ObjectText or ""
+                            -- Wajib ada rate /s asli — skip jika tidak ada
+                            if rate > 0 then
+                                table.insert(candidates, {
+                                    part  = targetPart,
+                                    rate  = rate,
+                                    label = prompt.ObjectText or ""
+                                })
                             end
                         end
                     end
@@ -672,7 +669,17 @@ local function findHighestRateBrainrot()
         end
     end
 
-    return bestPart, bestRate, bestLabel
+    -- Sort dari rate TERTINGGI ke terendah
+    table.sort(candidates, function(a, b)
+        return a.rate > b.rate
+    end)
+
+    if #candidates > 0 then
+        local best = candidates[1]
+        return best.part, best.rate, best.label
+    end
+
+    return nil, -1, ""
 end
 
 -- Loop utama Auto Steal
