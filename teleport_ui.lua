@@ -555,6 +555,30 @@ local function findHighestRateBrainrot()
     local bestRate  = -1
     local bestLabel = ""
 
+    -- Helper: cek apakah ada ProximityPrompt "Mencuri" di model ini
+    local function hasMencuriPrompt(part)
+        if not part then return false end
+        local model = part.Parent
+        local toCheck = { part }
+        if model then table.insert(toCheck, model) end
+        if model and model.Parent then table.insert(toCheck, model.Parent) end
+
+        for _, obj in ipairs(toCheck) do
+            if obj then
+                for _, desc in ipairs(obj:GetDescendants()) do
+                    if desc:IsA("ProximityPrompt") then
+                        local action = (desc.ActionText or ""):lower()
+                        -- Hanya "Mencuri" yang valid, skip "Beli" / "Buy" / dll
+                        if action:find("mencuri") or action:find("steal") then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        return false
+    end
+
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("TextLabel") or obj:IsA("TextButton") then
             local txt = obj.Text or ""
@@ -601,19 +625,26 @@ local function findHighestRateBrainrot()
                         end
 
                         if targetPart and not isBlacklisted(targetPart) then
-                            -- [ 3 ] Skip jika dekat base sendiri
-                            local nearOwnBase = false
-                            if savedBasePosition then
-                                local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
-                                if dist <= 35 then
-                                    nearOwnBase = true
-                                end
-                            end
 
-                            if not nearOwnBase then
-                                bestRate  = rate
-                                bestPart  = targetPart
-                                bestLabel = txt:gsub("%s+", " ")
+                            -- [ 3 ] WAJIB ada ProximityPrompt "Mencuri"
+                            -- Jika hanya ada "Beli" / tidak ada prompt → skip (itu toko/shop)
+                            local canSteal = hasMencuriPrompt(targetPart)
+
+                            if canSteal then
+                                -- [ 4 ] Skip jika dekat base sendiri
+                                local nearOwnBase = false
+                                if savedBasePosition then
+                                    local dist = (targetPart.Position - savedBasePosition.Position).Magnitude
+                                    if dist <= 35 then
+                                        nearOwnBase = true
+                                    end
+                                end
+
+                                if not nearOwnBase then
+                                    bestRate  = rate
+                                    bestPart  = targetPart
+                                    bestLabel = txt:gsub("%s+", " ")
+                                end
                             end
                         end
                     end
