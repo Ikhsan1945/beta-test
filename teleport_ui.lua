@@ -591,7 +591,10 @@ local function findHighestRateBrainrot()
         end
     end
 
-    if #mencuriList == 0 then return nil, -1, "" end
+    if #mencuriList == 0 then
+        setStatus("Debug: 0 prompt Mencuri ditemukan", Color3.fromRGB(255, 80, 80))
+        return nil, -1, ""
+    end
 
     -- STEP 3: scan BillboardGui yang punya TextLabel /s
     -- BillboardGui bisa di workspace (adornee ke Model) atau nested di Model
@@ -628,7 +631,12 @@ local function findHighestRateBrainrot()
         end
     end
 
-    if #rateEntries == 0 then return nil, -1, "" end
+    if #rateEntries == 0 then
+        setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=0 Billboard", Color3.fromRGB(255, 130, 50))
+        return nil, -1, ""
+    end
+
+    setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " Matching...", Color3.fromRGB(100, 180, 255))
 
     -- STEP 4: sort dari rate TERTINGGI
     table.sort(rateEntries, function(a, b) return a.rate > b.rate end)
@@ -662,10 +670,8 @@ local function findHighestRateBrainrot()
         end
     end
 
+    setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " NoMatch/OwnBase", Color3.fromRGB(255, 180, 50))
     return nil, -1, ""
-end
-
-
 local function triggerSteal(part)
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return end
@@ -753,7 +759,6 @@ local function runAutoSteal()
             end
 
             -- Step 1: scan di thread terpisah agar tidak freeze game
-            setStatus("Scanning...", Color3.fromRGB(160, 160, 80))
             task.wait(0) -- yield 1 frame sebelum scan berat
 
             local part, rate, label = findHighestRateBrainrot()
