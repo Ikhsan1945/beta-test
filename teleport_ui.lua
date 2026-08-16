@@ -26,6 +26,7 @@ local antiHitEnabled    = false
 local fpsBoosted        = false
 local antiRagdoll       = false
 local espEnabled        = false
+local autoRejoin        = false
 local autoStealEnabled  = false
 local noclipConn        = nil
 local autoStealConn     = nil
@@ -364,6 +365,8 @@ local BtnAntiAfk,    setAntiAfk    = createToggleBtn("Anti AFK",       "🛡️"
 local BtnAntiHit,    setAntiHit    = createToggleBtn("Anti Hit",       "🔰", 32)
 local BtnFPS,        setFPS        = createToggleBtn("FPS Booster",    "🚀", 33)
 local BtnAntiRag,    setAntiRag    = createToggleBtn("Anti Ragdoll",   "🦾", 34)
+local BtnAutoRejoin, setAutoRejoin = createToggleBtn("Auto Rejoin",    "🔄", 35)
+local BtnServerHop               = createBtn("Server Hop (Player Terbanyak)", "🌐", 36)
 
 -- ══════════════════════════════════════
 --         LOGIC — TELEPORT
@@ -629,41 +632,70 @@ local function triggerSteal(part)
     if not root then return end
 
     local function firePrompt(prompt)
-        -- Method 1: executor built-in (paling reliable)
-        pcall(function()
-            fireproximityprompt(prompt)
-        end)
-        -- Method 2: TriggerPrompt via service
+        pcall(function() fireproximityprompt(prompt) end)
         pcall(function()
             game:GetService("ProximityPromptService"):TriggerPrompt(prompt)
         end)
-        -- Method 3: Triggered signal
-        pcall(function()
-            prompt.Triggered:Fire(LocalPlayer)
-        end)
+        pcall(function() prompt.Triggered:Fire(LocalPlayer) end)
     end
 
-    -- Scan semua ProximityPrompt dalam radius 20 stud dari player
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    -- Kumpulkan semua ancestor dari part target
+    -- untuk pastikan hanya fire prompt di model yang benar
+    local targetAncestors = {}
+    local p = part
+    for _ = 1, 8 do
+        if not p then break end
+        targetAncestors[p] = true
+        p = p.Parent
+    end
+
+    -- Scan ProximityPrompt HANYA dari dalam model target
+    local function scanObj(obj)
+        if not obj then return end
+        for _, desc in ipairs(obj:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                local action = (desc.ActionText or ""):lower()
+                if action:find("mencuri") or action:find("steal") or
+                   action:find("ambil") or action:find("collect") then
+                    firePrompt(desc)
+                end
+            end
+        end
+        -- Juga cek di obj sendiri
         if obj:IsA("ProximityPrompt") then
             local action = (obj.ActionText or ""):lower()
-            local okPos, pos = pcall(function()
-                local p = obj.Parent
-                while p do
-                    if p:IsA("BasePart") then return p.Position end
-                    p = p.Parent
-                end
-                return nil
-            end)
-            if okPos and pos then
-                local dist = (pos - root.Position).Magnitude
-                if dist <= 20 and (
-                    action:find("mencuri") or
-                    action:find("steal") or
-                    action:find("ambil") or
-                    action:find("collect")
-                ) then
-                    firePrompt(obj)
+            if action:find("mencuri") or action:find("steal") or
+               action:find("ambil") or action:find("collect") then
+                firePrompt(obj)
+            end
+        end
+    end
+
+    -- Scan dari part → parent model langsung
+    scanObj(part)
+    if part.Parent then
+        scanObj(part.Parent)
+        -- Jika parent model, scan juga grandparent
+        if part.Parent.Parent then
+            scanObj(part.Parent.Parent)
+        end
+    end
+
+    -- Fallback: jika tidak ada prompt ditemukan di model,
+    -- scan radius SANGAT DEKAT (3 stud) dari target agar akurat
+    local found = false
+    for _, desc in ipairs(workspace:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") then
+            local action = (desc.ActionText or ""):lower()
+            if action:find("mencuri") or action:find("steal") then
+                -- Cek apakah prompt ini milik model target
+                local promptPart = desc.Parent
+                if promptPart and promptPart:IsA("BasePart") then
+                    local dist = (promptPart.Position - part.Position).Magnitude
+                    if dist <= 5 then -- hanya dalam 5 stud dari TARGET, bukan dari player
+                        firePrompt(desc)
+                        found = true
+                    end
                 end
             end
         end
@@ -1271,6 +1303,154 @@ BtnAntiRag.MouseButton1Click:Connect(function()
             end
         end
     end
+end)
+
+-- ══════════════════════════════════════
+--         LOGIC — AUTO REJOIN
+-- ══════════════════════════════════════
+local TeleportService = game:GetService("TeleportService")
+local rejoinConn      = nil
+
+local function doRejoin()
+    task.wait(3) -- tunggu 3 detik sebelum rejoin
+    pcall(function()
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    end)
+end
+
+BtnAutoRejoin.MouseButton1Click:Connect(function()
+    autoRejoin = not autoRejoin
+    setAutoRejoin(autoRejoin)
+    setStatus(autoRejoin and "Auto Rejoin ON" or "Auto Rejoin OFF",
+        autoRejoin and Color3.fromRGB(100, 220, 100) or Color3.fromRGB(200, 100, 100))
+
+    if autoRejoin then
+        -- [ 1 ] Monitor jika player kena kick / disconnect dari server
+        rejoinConn = game:GetService("Players").PlayerRemoving:Connect(function(player)
+            if player == LocalPlayer and autoRejoin then
+                doRejoin()
+            end
+        end)
+
+        -- [ 2 ] Monitor network status via heartbeat
+        -- Jika server tidak merespons / player tidak bisa bergerak
+        local lastPing = tick()
+        task.spawn(function()
+            while autoRejoin do
+                task.wait(5)
+                if not autoRejoin then break end
+
+                -- Cek apakah character masih exist
+                local char = LocalPlayer.Character
+                if not char then
+                    -- Character hilang terlalu lama = kemungkinan kena kick
+                    task.wait(5)
+                    if not LocalPlayer.Character and autoRejoin then
+                        setStatus("Terdeteksi kick — Rejoining...", Color3.fromRGB(255, 180, 50))
+                        doRejoin()
+                    end
+                end
+
+                -- Cek network ownership / ping via RunService
+                local ok = pcall(function()
+                    local _ = workspace:FindFirstChild("Baseplate")
+                end)
+                if not ok and autoRejoin then
+                    setStatus("Koneksi terputus — Rejoining...", Color3.fromRGB(255, 80, 80))
+                    doRejoin()
+                end
+            end
+        end)
+
+        -- [ 3 ] Monitor TeleportService untuk kick event
+        pcall(function()
+            game:GetService("TeleportService").TeleportInitFailed:Connect(function()
+                if autoRejoin then
+                    task.wait(2)
+                    doRejoin()
+                end
+            end)
+        end)
+
+        setStatus("Auto Rejoin ON — Monitoring...", Color3.fromRGB(100, 220, 100))
+    else
+        if rejoinConn then rejoinConn:Disconnect(); rejoinConn = nil end
+        setStatus("Auto Rejoin OFF", Color3.fromRGB(200, 100, 100))
+    end
+end)
+
+-- ══════════════════════════════════════
+--         LOGIC — SERVER HOP
+-- ══════════════════════════════════════
+BtnServerHop.MouseButton1Click:Connect(function()
+    setStatus("Scanning server...", Color3.fromRGB(255, 210, 60))
+    BtnServerHop.BackgroundColor3 = Color3.fromRGB(30, 50, 100)
+
+    task.spawn(function()
+        local HttpService     = game:GetService("HttpService")
+        local TeleportService = game:GetService("TeleportService")
+        local placeId         = game.PlaceId
+
+        -- Ambil daftar server via Roblox API
+        local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Desc&limit=100"
+
+        local ok, result = pcall(function()
+            return game:HttpGet(url)
+        end)
+
+        if not ok or not result then
+            setStatus("Gagal fetch server list.", Color3.fromRGB(255, 80, 80))
+            BtnServerHop.BackgroundColor3 = Color3.fromRGB(20, 26, 55)
+            return
+        end
+
+        local data = nil
+        pcall(function()
+            data = HttpService:JSONDecode(result)
+        end)
+
+        if not data or not data.data then
+            setStatus("Data server tidak valid.", Color3.fromRGB(255, 80, 80))
+            BtnServerHop.BackgroundColor3 = Color3.fromRGB(20, 26, 55)
+            return
+        end
+
+        -- Cari server dengan player terbanyak
+        local bestServer    = nil
+        local bestPlayers   = 0
+        local currentJobId  = game.JobId
+
+        for _, server in ipairs(data.data) do
+            if server.id ~= currentJobId then
+                if server.playing and server.playing > bestPlayers then
+                    bestPlayers  = server.playing
+                    bestServer   = server
+                end
+            end
+        end
+
+        if not bestServer then
+            setStatus("Tidak ada server lain ditemukan.", Color3.fromRGB(255, 180, 50))
+            BtnServerHop.BackgroundColor3 = Color3.fromRGB(20, 26, 55)
+            return
+        end
+
+        setStatus("Hop ke server " .. bestPlayers .. " player...", Color3.fromRGB(100, 220, 100))
+        task.wait(1.5)
+
+        -- Teleport ke server dengan player terbanyak
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(placeId, bestServer.id, LocalPlayer)
+        end)
+
+        -- Fallback jika TeleportToPlaceInstance gagal
+        task.wait(3)
+        pcall(function()
+            TeleportService:Teleport(placeId, LocalPlayer)
+        end)
+
+        BtnServerHop.BackgroundColor3 = Color3.fromRGB(20, 26, 55)
+    end)
 end)
 
 local isOpen = true
