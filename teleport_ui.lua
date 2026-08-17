@@ -799,7 +799,6 @@ local function runAutoSteal()
                     task.wait(1)
                 end
             else
-                setStatus("Tidak ada target — Scan ulang...", Color3.fromRGB(160, 160, 80))
                 task.wait(2)
             end
         end)
