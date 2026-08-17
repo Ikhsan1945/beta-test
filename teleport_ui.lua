@@ -556,7 +556,6 @@ end
 
 local function findHighestRateBrainrot()
 
-    -- Helper: ambil posisi dari instance apapun
     local function getPos(obj)
         if not obj then return nil end
         if obj:IsA("BasePart") then return obj.Position end
@@ -564,16 +563,6 @@ local function findHighestRateBrainrot()
             if obj.PrimaryPart then return obj.PrimaryPart.Position end
             local bp = obj:FindFirstChildWhichIsA("BasePart")
             if bp then return bp.Position end
-        end
-        return nil
-    end
-
-    -- Helper: ambil BasePart dari instance
-    local function getPart(obj)
-        if not obj then return nil end
-        if obj:IsA("BasePart") then return obj end
-        if obj:IsA("Model") then
-            return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
         end
         return nil
     end
@@ -595,7 +584,7 @@ local function findHighestRateBrainrot()
         end
     end
 
-    -- STEP 2: kumpulkan semua prompt "Mencuri" dengan posisi
+    -- STEP 2: kumpulkan semua prompt "Mencuri"
     local mencuriList = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
@@ -604,9 +593,16 @@ local function findHighestRateBrainrot()
                 local p = obj.Parent
                 for _ = 1, 8 do
                     if not p then break end
-                    local part = getPart(p)
-                    if part then
-                        table.insert(mencuriList, { part = part, pos = part.Position })
+                    local pos = getPos(p)
+                    if pos then
+                        local part = nil
+                        if p:IsA("BasePart") then part = p
+                        elseif p:IsA("Model") then
+                            part = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
+                        end
+                        if part then
+                            table.insert(mencuriList, { part = part, pos = pos })
+                        end
                         break
                     end
                     p = p.Parent
@@ -615,60 +611,56 @@ local function findHighestRateBrainrot()
         end
     end
 
+    showDebug("S1:Ambil=" .. #ambilPos .. " S2:Mencuri=" .. #mencuriList)
+
     if #mencuriList == 0 then
         showDebug("DEBUG: 0 prompt Mencuri ditemukan!")
         return nil, -1, ""
     end
 
-    -- STEP 3: scan BillboardGui yang punya TextLabel /s
-    -- BillboardGui bisa di workspace (adornee ke Model) atau nested di Model
+    -- STEP 3: scan SEMUA TextLabel/TextButton di workspace yang punya rate /s
+    -- Tidak terbatas pada BillboardGui saja
     local rateEntries = {}
-
-    for _, bg in ipairs(workspace:GetDescendants()) do
-        if bg:IsA("BillboardGui") then
-            -- Dapatkan posisi dari BillboardGui
-            local bgPos = nil
-            if bg.Adornee then
-                bgPos = getPos(bg.Adornee)
-            end
-            if not bgPos then
-                bgPos = getPos(bg.Parent)
-            end
-
-            if bgPos then
-                -- Scan semua TextLabel di dalam BillboardGui
-                local bestRate = 0
-                for _, child in ipairs(bg:GetDescendants()) do
-                    if child:IsA("TextLabel") or child:IsA("TextButton") then
-                        local txt = child.Text or ""
-                        if txt:find("/[sS]") and txt:find("%$") then
-                            local r = parseRate(txt)
-                            if r > bestRate then bestRate = r end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local txt = obj.Text or ""
+            if txt:find("/[sS]") and txt:find("%$") then
+                local r = parseRate(txt)
+                if r > 0 then
+                    -- Traverse parent untuk cari posisi
+                    local lblPos = nil
+                    local p = obj.Parent
+                    for _ = 1, 10 do
+                        if not p then break end
+                        local pos = getPos(p)
+                        if pos then lblPos = pos; break end
+                        -- Cek BillboardGui adornee
+                        if p:IsA("BillboardGui") and p.Adornee then
+                            local ap = getPos(p.Adornee)
+                            if ap then lblPos = ap; break end
                         end
+                        p = p.Parent
                     end
-                end
-
-                if bestRate > 0 then
-                    table.insert(rateEntries, { pos = bgPos, rate = bestRate })
+                    if lblPos then
+                        table.insert(rateEntries, { pos = lblPos, rate = r, txt = txt })
+                    end
                 end
             end
         end
     end
 
+    showDebug("S3:Rate entries=" .. #rateEntries)
+
     if #rateEntries == 0 then
-        showDebug("DEBUG: Mencuri=" .. #mencuriList .. " tapi Rate BillboardGui = 0")
+        showDebug("DEBUG: Mencuri=" .. #mencuriList .. " tapi Rate TextLabel = 0")
         return nil, -1, ""
     end
-
-    showDebug("DEBUG: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " Matching...")
 
     -- STEP 4: sort dari rate TERTINGGI
     table.sort(rateEntries, function(a, b) return a.rate > b.rate end)
 
-    -- STEP 5: dari rate tertinggi, cocokkan dengan prompt "Mencuri" terdekat
+    -- STEP 5: dari rate tertinggi, skip base sendiri, match ke mencuri terdekat
     for _, entry in ipairs(rateEntries) do
-
-        -- Skip jika base sendiri (ada "Ambil" dalam 20 stud)
         local ownBase = false
         for _, aPos in ipairs(ambilPos) do
             if (aPos - entry.pos).Magnitude <= 20 then
@@ -677,7 +669,6 @@ local function findHighestRateBrainrot()
         end
 
         if not ownBase then
-            -- Cari prompt "Mencuri" yang PALING DEKAT dari entry ini (tanpa batas jarak)
             local bestPart = nil
             local bestDist = math.huge
             for _, mp in ipairs(mencuriList) do
@@ -687,16 +678,22 @@ local function findHighestRateBrainrot()
                     bestPart = mp.part
                 end
             end
-
             if bestPart then
+                hideDebug()
                 return bestPart, entry.rate, ""
             end
         end
     end
 
-    showDebug("DEBUG: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " - Semua OwnBase!")
+    showDebug("DEBUG: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " - Semua OwnBase! Dist=" .. (function()
+        if #rateEntries > 0 and #mencuriList > 0 then
+            return tostring(math.floor((mencuriList[1].pos - rateEntries[1].pos).Magnitude))
+        end
+        return "?"
+    end)())
     return nil, -1, ""
 end
+
 
 local function triggerSteal(part)
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
