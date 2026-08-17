@@ -56,8 +56,32 @@ pcall(function() ScreenGui.IgnoreGuiInset = true end)
 ScreenGui.Parent = PlayerGui
 
 -- ══════════════════════════════════════
---         MAIN FRAME
+--         DEBUG LABEL (tengah layar)
 -- ══════════════════════════════════════
+local DebugLabel = Instance.new("TextLabel")
+DebugLabel.Size = UDim2.new(0, 380, 0, 60)
+DebugLabel.Position = UDim2.new(0.5, -190, 0.5, -30)
+DebugLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+DebugLabel.BackgroundTransparency = 0.3
+DebugLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+DebugLabel.Font = Enum.Font.GothamBold
+DebugLabel.TextSize = 16
+DebugLabel.TextWrapped = true
+DebugLabel.ZIndex = 50
+DebugLabel.Text = ""
+DebugLabel.Visible = false
+DebugLabel.Parent = ScreenGui
+Instance.new("UICorner", DebugLabel).CornerRadius = UDim.new(0, 8)
+
+local function showDebug(msg)
+    DebugLabel.Text = msg
+    DebugLabel.Visible = true
+end
+
+local function hideDebug()
+    DebugLabel.Visible = false
+    DebugLabel.Text = ""
+end
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 275, 0, 420)
@@ -592,7 +616,7 @@ local function findHighestRateBrainrot()
     end
 
     if #mencuriList == 0 then
-        setStatus("Debug: 0 prompt Mencuri ditemukan", Color3.fromRGB(255, 80, 80))
+        showDebug("DEBUG: 0 prompt Mencuri ditemukan!")
         return nil, -1, ""
     end
 
@@ -632,11 +656,11 @@ local function findHighestRateBrainrot()
     end
 
     if #rateEntries == 0 then
-        setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=0 Billboard", Color3.fromRGB(255, 130, 50))
+        showDebug("DEBUG: Mencuri=" .. #mencuriList .. " tapi Rate BillboardGui = 0")
         return nil, -1, ""
     end
 
-    setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " Matching...", Color3.fromRGB(100, 180, 255))
+    showDebug("DEBUG: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " Matching...")
 
     -- STEP 4: sort dari rate TERTINGGI
     table.sort(rateEntries, function(a, b) return a.rate > b.rate end)
@@ -670,7 +694,7 @@ local function findHighestRateBrainrot()
         end
     end
 
-    setStatus("Debug: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " NoMatch/OwnBase", Color3.fromRGB(255, 180, 50))
+    showDebug("DEBUG: Mencuri=" .. #mencuriList .. " Rate=" .. #rateEntries .. " - Semua OwnBase!")
     return nil, -1, ""
 end
 
@@ -792,6 +816,7 @@ local function runAutoSteal()
                 root = char and char:FindFirstChild("HumanoidRootPart")
                 if root and savedBasePosition then
                     root.CFrame = savedBasePosition
+                    hideDebug()
                     setStatus("✓ Stolen " .. fmtVal(rate) .. "/s!", Color3.fromRGB(80, 220, 100))
                     task.wait(1)
                 elseif not savedBasePosition then
