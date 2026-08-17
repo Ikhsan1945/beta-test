@@ -687,6 +687,14 @@ local function findHighestRateBrainrot()
     -- STEP 4: sort dari rate TERTINGGI
     table.sort(rateEntries, function(a, b) return a.rate > b.rate end)
 
+    -- Debug: tampil 3 rate teratas yang ditemukan
+    local debugRates = ""
+    for i = 1, math.min(3, #rateEntries) do
+        debugRates = debugRates .. fmtVal(rateEntries[i].rate) .. "/s "
+    end
+    showDebug("Top rates: " .. debugRates .. "\nMencuri=" .. #mencuriList)
+    task.wait(0)
+
     -- STEP 5: dari rate tertinggi, skip base sendiri, match ke mencuri terdekat
     for _, entry in ipairs(rateEntries) do
         -- Skip base sendiri
@@ -716,6 +724,8 @@ local function findHighestRateBrainrot()
                 end
             end
             if bestPart then
+                showDebug("TARGET: " .. fmtVal(entry.rate) .. "/s | Jarak: " .. math.floor(bestDist))
+                task.wait(1)
                 hideDebug()
                 return bestPart, entry.rate, ""
             end
