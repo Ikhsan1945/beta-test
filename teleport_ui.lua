@@ -584,6 +584,25 @@ local function findHighestRateBrainrot()
         end
     end
 
+    -- STEP 1.5: kumpulkan posisi area plot/pajangan yang harus di-skip
+    -- Hanya dari TextLabel spesifik, radius kecil 15 stud
+    local plotPos = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local txt = (obj.Text or ""):lower()
+            if txt:find("plot switching") or txt:find("pangkalan select") or
+               txt:find("plot select") then
+                local p = obj.Parent
+                for _ = 1, 8 do
+                    if not p then break end
+                    local pos = getPos(p)
+                    if pos then table.insert(plotPos, pos); break end
+                    p = p.Parent
+                end
+            end
+        end
+    end
+
     -- STEP 2: kumpulkan semua prompt "Mencuri"
     local mencuriList = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -601,7 +620,16 @@ local function findHighestRateBrainrot()
                             part = p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart")
                         end
                         if part then
-                            table.insert(mencuriList, { part = part, pos = pos })
+                            -- Skip jika di area plot/pajangan
+                            local isPlot = false
+                            for _, pPos in ipairs(plotPos) do
+                                if (pPos - pos).Magnitude <= 15 then
+                                    isPlot = true; break
+                                end
+                            end
+                            if not isPlot then
+                                table.insert(mencuriList, { part = part, pos = pos })
+                            end
                         end
                         break
                     end
@@ -661,6 +689,7 @@ local function findHighestRateBrainrot()
 
     -- STEP 5: dari rate tertinggi, skip base sendiri, match ke mencuri terdekat
     for _, entry in ipairs(rateEntries) do
+        -- Skip base sendiri
         local ownBase = false
         for _, aPos in ipairs(ambilPos) do
             if (aPos - entry.pos).Magnitude <= 20 then
@@ -668,7 +697,15 @@ local function findHighestRateBrainrot()
             end
         end
 
-        if not ownBase then
+        -- Skip area plot/pajangan
+        local isPlot = false
+        for _, pPos in ipairs(plotPos) do
+            if (pPos - entry.pos).Magnitude <= 15 then
+                isPlot = true; break
+            end
+        end
+
+        if not ownBase and not isPlot then
             local bestPart = nil
             local bestDist = math.huge
             for _, mp in ipairs(mencuriList) do
